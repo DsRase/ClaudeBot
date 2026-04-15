@@ -1,0 +1,10 @@
+[project]
+name = "claudebot"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "aiogram>=3.27.0",
+    "gitpython>=3.1.46",
+    "langchain>=1.2.15",
+]
