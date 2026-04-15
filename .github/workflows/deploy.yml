@@ -2,6 +2,10 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Номер сборки для деплоя"
+        required: true
 
 jobs:
   deploy:
@@ -19,3 +23,10 @@ jobs:
             docker-compose pull
             docker-compose down
             docker-compose up -d
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ github.event.inputs.version }}" \
+            --title "Release v${{ github.event.inputs.version }}" \
+            --notes "Deployed image build #${{ github.event.inputs.version }}"
