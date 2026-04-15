@@ -1,5 +1,5 @@
 import requests as req
-from src.logger import LoggerFactory
+from src.utils.logger import LoggerFactory
 
 def healthcheck():
     logger = LoggerFactory.get_logger(__name__)

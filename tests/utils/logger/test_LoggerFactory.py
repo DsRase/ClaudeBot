@@ -1,6 +1,6 @@
 from logging import Logger
 
-from src.logger import LoggerFactory
+from src.utils.logger import LoggerFactory
 
 def test_get_logger():
     logger = LoggerFactory.get_logger(__name__)
