@@ -1,1 +1,1 @@
-from LoggerFactory import LoggerFactory
+from .LoggerFactory import LoggerFactory
