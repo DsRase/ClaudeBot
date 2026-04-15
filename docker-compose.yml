@@ -1,5 +1,5 @@
 services:
   bot:
-    image: ghcr.io/DsRase/claudebot:latest
+    image: ghcr.io/dsrase/claudebot:latest
     env_file: .env
     restart: unless-stopped
