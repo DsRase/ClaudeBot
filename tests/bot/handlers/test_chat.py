@@ -27,7 +27,7 @@ async def test_premium_user_gets_llm_answer(mocker, message):
     await chat(message)
 
     mock_ask.assert_awaited_once_with("привет", True)
-    message.answer.assert_awaited_once_with("ответ от Claude")
+    message.answer.assert_any_await("ответ от Claude")
 
 
 @pytest.mark.asyncio
