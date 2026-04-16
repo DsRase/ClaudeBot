@@ -1,16 +1,16 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name} (this is NEW version!)')  # Press Ctrl+F8 to toggle the breakpoint.
+import asyncio
+from aiogram import Bot, Dispatcher
+from src.bot.router import include_routers
+from src.config.settings import get_settings
 
 
-# Press the green button in the gutter to run the script.
+async def main():
+    settings = get_settings()
+    dp = Dispatcher()
+    include_routers(dp)
+    async with Bot(token=settings.telegram_token) as bot:
+        await dp.start_polling(bot)
+
+
 if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    asyncio.run(main())
