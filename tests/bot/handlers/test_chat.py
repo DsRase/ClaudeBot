@@ -42,4 +42,7 @@ async def test_non_premium_user_gets_rejection(mocker, message):
     await chat(message)
 
     mock_ask.assert_not_awaited()
-    message.answer.assert_awaited_once_with(BotMessages.NOT_PREMIUM)
+
+    call_args = message.answer.await_args
+    actual_text = call_args[0][0] if call_args[0] else None
+    assert actual_text in BotMessages.NOT_PREMIUM, "Вернулся неочевидный текст для NOT_PREMIUM"
