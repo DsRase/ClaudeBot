@@ -1,0 +1,12 @@
+from aiogram import Dispatcher
+
+from src.bot.handlers import chat
+from src.bot.router import include_routers
+
+
+def test_include_routers_adds_chat_router(mocker):
+    dp = mocker.MagicMock(spec=Dispatcher)
+
+    include_routers(dp)
+
+    dp.include_router.assert_called_once_with(chat.router)

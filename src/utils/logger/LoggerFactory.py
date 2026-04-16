@@ -1,10 +1,12 @@
 import logging
 
 class LoggerFactory:
+    """Возвращает объекты logger с одинаковым конфигом."""
     _configured = False
 
     @classmethod
     def _configure(cls):
+        """Конфиг для всех logger в проекте."""
         if cls._configured:
             return
 
@@ -17,5 +19,6 @@ class LoggerFactory:
 
     @classmethod
     def get_logger(cls, name: str) -> logging.Logger:
+        """Создаёт экземпляр класса LoggerFactory и возвращает."""
         cls._configure()
         return logging.getLogger(name)

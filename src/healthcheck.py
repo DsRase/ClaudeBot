@@ -2,6 +2,7 @@ import requests as req
 from src.utils.logger import LoggerFactory
 
 def healthcheck():
+    """Проверяет обязательный выход в интернет."""
     logger = LoggerFactory.get_logger(__name__)
     try:
         response = req.get('https://google.com/', timeout=5)

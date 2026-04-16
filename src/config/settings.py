@@ -2,6 +2,7 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    """Основной конфиг с .env и прочим."""
     telegram_token: str
     anthropic_api_key: str
 
@@ -15,4 +16,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Получить объект конфига. Синглтон."""
     return Settings()
