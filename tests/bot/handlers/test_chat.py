@@ -26,7 +26,7 @@ async def test_premium_user_gets_llm_answer(mocker, message):
 
     await chat(message)
 
-    mock_ask.assert_awaited_once_with("привет")
+    mock_ask.assert_awaited_once_with("привет", True)
     message.answer.assert_awaited_once_with("ответ от Claude")
 
 
