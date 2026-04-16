@@ -1,0 +1,1 @@
+from .get_random_message import get_random_message

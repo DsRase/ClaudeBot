@@ -6,7 +6,10 @@ class Settings(BaseSettings):
     telegram_token: str
     anthropic_api_key: str
 
+    max_tokens: int = 1024
+
     premium_user_ids: list[int] = []
+    base_user_ids: list[int] = []
     premium_model: str = "claude-opus-4-6"
     default_model: str = "claude-sonnet-4-6"
 
