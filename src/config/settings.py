@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     premium_model: str = "claude-opus-4-6"
     default_model: str = "claude-sonnet-4-6"
 
+    redis_url: str = "redis://localhost:6379"
+    context_max_stored: int = 500
+    context_default_limit: int = 100
+
     model_config = {
         "env_file": ".env",
     }

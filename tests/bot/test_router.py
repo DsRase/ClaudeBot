@@ -5,6 +5,7 @@ from src.bot.router import include_routers
 
 
 def test_include_routers_adds_chat_router(mocker):
+    """Проверяет, что include_routers регистрирует роутер чата в диспетчере."""
     dp = mocker.MagicMock(spec=Dispatcher)
 
     include_routers(dp)

@@ -9,6 +9,7 @@ dependencies = [
     "langchain>=1.2.15",
     "langchain-anthropic>=1.4.0",
     "pydantic-settings>=2.13.1",
+    "redis[asyncio]>=5.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.23",
     "pytest-mock>=3.12",
