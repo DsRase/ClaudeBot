@@ -85,6 +85,7 @@ async def chat(message: Message, bot: Bot):
     assistant_msg = ChatMessage(
         role="assistant",
         user_id=None,
+        reply_to_username=message.from_user.username,
         content=answer,
         timestamp=int(datetime.now(timezone.utc).timestamp()),
     )

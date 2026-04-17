@@ -161,6 +161,25 @@ class TestChatHandler:
             "ответ в группе должен быть отправлен через reply, а не answer"
 
     @pytest.mark.asyncio
+    async def test_reply_to_username_captured(self, mocker, message, bot, history):
+        """Проверяет, что при ответе на чужое сообщение в Redis сохраняется @username адресата."""
+        message.reply_to_message = mocker.MagicMock()
+        message.reply_to_message.from_user.username = "petya"
+
+        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
+            premium_user_ids=[111], base_user_ids=[],
+        )
+        mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
+        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
+        mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ"))
+
+        await chat(message, bot)
+
+        saved_user_msg = mock_add.await_args_list[0].args[1]
+        assert saved_user_msg.reply_to_username == "petya", \
+            f"reply_to_username не сохранился, получено: {saved_user_msg.reply_to_username!r}"
+
+    @pytest.mark.asyncio
     async def test_group_reply_to_bot_triggers_reply(self, mocker, message, bot, history):
         """Проверяет, что ответ на сообщение бота в группе приводит к срабатыванию хендлера."""
         message.chat.type = "group"
