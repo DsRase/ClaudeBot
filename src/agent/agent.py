@@ -16,7 +16,7 @@ async def ask(message: str, is_premium = False) -> str:
     llm = ChatAnthropic(
         model=model,
         anthropic_api_key=settings.anthropic_api_key,
-        timeout=10,
+        timeout=120,
         max_tokens=settings.max_tokens
     )
     response = await llm.ainvoke(message)
