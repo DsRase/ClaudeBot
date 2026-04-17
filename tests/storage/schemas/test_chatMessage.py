@@ -29,3 +29,19 @@ class TestChatMessage:
         """Проверяет, что недопустимое значение role вызывает исключение."""
         with pytest.raises(Exception):
             ChatMessage(role="admin", user_id=1, content="x", timestamp=1)
+
+    def test_optional_user_fields_default_none(self):
+        """Проверяет, что username/first_name/last_name по умолчанию None."""
+        msg = ChatMessage(role="user", user_id=1, content="x", timestamp=1)
+        assert msg.username is None, "username должен быть None по умолчанию"
+        assert msg.first_name is None, "first_name должен быть None по умолчанию"
+        assert msg.last_name is None, "last_name должен быть None по умолчанию"
+
+    def test_user_fields_preserved(self):
+        """Проверяет, что username/first_name/last_name сохраняются как переданы."""
+        msg = ChatMessage(
+            role="user", user_id=1, content="x", timestamp=1,
+            username="vasya", first_name="Вася", last_name="Пупкин",
+        )
+        assert (msg.username, msg.first_name, msg.last_name) == ("vasya", "Вася", "Пупкин"), \
+            "поля юзера сохранились некорректно"

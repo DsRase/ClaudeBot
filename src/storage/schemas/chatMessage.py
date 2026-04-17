@@ -7,5 +7,8 @@ class ChatMessage(BaseModel):
     """Одно сообщение в истории чата."""
     role: Literal["user", "assistant"]
     user_id: int | None  # None для сообщений ассистента
+    username: str | None = None  # @username Telegram юзера, может отсутствовать
+    first_name: str | None = None  # имя юзера в Telegram
+    last_name: str | None = None  # фамилия юзера в Telegram, может отсутствовать
     content: str
     timestamp: int  # Unix timestamp
