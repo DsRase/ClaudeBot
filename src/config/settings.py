@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379"
     context_max_stored: int = 500
-    context_default_limit: int = 100
+    context_default_limit: int = 50
 
     model_config = {
         "env_file": ".env",

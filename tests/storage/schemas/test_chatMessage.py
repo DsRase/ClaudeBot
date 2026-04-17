@@ -31,11 +31,12 @@ class TestChatMessage:
             ChatMessage(role="admin", user_id=1, content="x", timestamp=1)
 
     def test_optional_user_fields_default_none(self):
-        """Проверяет, что username/first_name/last_name по умолчанию None."""
+        """Проверяет, что username/first_name/last_name/reply_to_username по умолчанию None."""
         msg = ChatMessage(role="user", user_id=1, content="x", timestamp=1)
         assert msg.username is None, "username должен быть None по умолчанию"
         assert msg.first_name is None, "first_name должен быть None по умолчанию"
         assert msg.last_name is None, "last_name должен быть None по умолчанию"
+        assert msg.reply_to_username is None, "reply_to_username должен быть None по умолчанию"
 
     def test_user_fields_preserved(self):
         """Проверяет, что username/first_name/last_name сохраняются как переданы."""

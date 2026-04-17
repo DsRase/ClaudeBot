@@ -42,12 +42,17 @@ async def chat(message: Message, bot: Bot):
 
     logger.info(f"user_id={user_id}, chat_id={chat_id}, type={message.chat.type}: получено сообщение")
 
+    reply_to_username = None
+    if message.reply_to_message and message.reply_to_message.from_user:
+        reply_to_username = message.reply_to_message.from_user.username
+
     user_msg = ChatMessage(
         role="user",
         user_id=user_id,
         username=message.from_user.username,
         first_name=message.from_user.first_name,
         last_name=message.from_user.last_name,
+        reply_to_username=reply_to_username,
         content=message.text,
         timestamp=int(message.date.timestamp()),
     )

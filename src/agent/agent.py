@@ -18,16 +18,18 @@ _LANGCHAIN_ROLE_MAP = {
 
 
 def _format_user_content(msg: ChatMessage) -> str:
-    """Префиксует контент пользовательского сообщения метаданными отправителя для LLM."""
+    """Префиксует контент пользовательского сообщения метаданными отправителя и адресата для LLM."""
     parts = []
     if msg.username:
         parts.append(f"@{msg.username}")
     name = " ".join(p for p in (msg.first_name, msg.last_name) if p)
     if name:
         parts.append(name)
-    if not parts:
+    sender = f"[{' | '.join(parts)}]" if parts else ""
+    reply = f" ответил @{msg.reply_to_username}" if msg.reply_to_username else ""
+    if not sender and not reply:
         return msg.content
-    return f"[{' | '.join(parts)}]: {msg.content}"
+    return f"{sender}{reply}: {msg.content}"
 
 
 async def ask(history: list[ChatMessage], is_premium: bool = False) -> str:

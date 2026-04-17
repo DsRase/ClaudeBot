@@ -167,6 +167,7 @@ class TestChatHandler:
         message.text = "и что дальше?"
         message.reply_to_message = mocker.MagicMock()
         message.reply_to_message.from_user.id = BOT_ID
+        message.reply_to_message.from_user.username = None
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
             premium_user_ids=[111], base_user_ids=[],
