@@ -1,6 +1,8 @@
-from typing import List
 import random
+from typing import List
+
 from src.utils import LoggerFactory
+
 
 def get_random_message(messages: List[str]) -> str:
     """Возвращает случайный элемент из messages. Если список пуст, возбуждается IndexError."""

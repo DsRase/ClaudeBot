@@ -35,7 +35,7 @@ async def test_premium_user_gets_llm_answer(mocker, message, history):
     await chat(message)
 
     mock_ask.assert_awaited_once_with(history, True), "ask должен вызываться с историей и is_premium=True"
-    message.answer.assert_any_await("ответ от Claude"), "ответ модели должен быть отправлен пользователю"
+    message.answer.assert_any_await("ответ от Claude", entities=mocker.ANY), "ответ модели должен быть отправлен пользователю"
 
 
 @pytest.mark.asyncio

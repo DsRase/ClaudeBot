@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import telegramify_markdown
 from aiogram import Router
 from aiogram.types import Message
 
@@ -59,10 +60,11 @@ async def chat(message: Message):
     await add_message(chat_id, assistant_msg)
     logger.debug(f"chat_id={chat_id}: ответ ассистента сохранён в Redis")
 
+    text, entities = telegramify_markdown.convert(answer)
     chunk_size = 4096  # ограничение телеграма на длину сообщения
-    chunks = [answer[i:i + chunk_size] for i in range(0, len(answer), chunk_size)]
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
     for chunk in chunks:
-        await message.answer(chunk)
+        await message.answer(chunk, entities=entities)
 
     await think_msg.delete()
     logger.info(f"Ответ отправлен user_id={user_id}, chat_id={chat_id}")

@@ -1,3 +1,5 @@
+import re
+
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -29,5 +31,6 @@ async def ask(history: list[ChatMessage], is_premium: bool = False) -> str:
     lc_messages = [_LANGCHAIN_ROLE_MAP[m.role](content=m.content) for m in history]
     response = await llm.ainvoke(lc_messages)
 
-    logger.debug(f"Получен ответ от модели, длина: {len(response.content)}")
-    return response.content
+    content = re.sub(r"<think>.*?</think>", "", response.content, flags=re.DOTALL).strip()
+    logger.debug(f"Получен ответ от модели, длина: {len(content)}")
+    return content
