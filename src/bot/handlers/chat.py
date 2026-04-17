@@ -5,7 +5,7 @@ from aiogram import Router
 from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
-from src.config.messages import BotMessages
+from src.config import BotMessages
 from src.config.settings import get_settings
 from src.storage import ChatMessage, add_message, get_context
 from src.utils.logger.LoggerFactory import LoggerFactory

@@ -1,4 +1,4 @@
-from src.config.messages import BotMessages
+from src.config import BotMessages
 from src.utils.messager import get_random_message
 
 

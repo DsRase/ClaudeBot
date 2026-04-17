@@ -2,7 +2,7 @@ import json
 
 from src.config.settings import get_settings
 from src.storage.redis.redis_client import get_redis
-from src.storage.schemas.chat_message import ChatMessage
+from src.storage.schemas.chatMessage import ChatMessage
 from src.utils.logger.LoggerFactory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)

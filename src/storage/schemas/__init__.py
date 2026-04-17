@@ -1,3 +1,3 @@
-from src.storage.schemas.chat_message import ChatMessage
+from src.storage.schemas.chatMessage import ChatMessage
 
 __all__ = ["ChatMessage"]

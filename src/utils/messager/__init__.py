@@ -1,1 +1,3 @@
-from .get_random_message import get_random_message
+from .getRandomMessage import get_random_message
+
+__all__ = ["get_random_message"]

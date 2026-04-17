@@ -1,7 +1,7 @@
 import pytest
 
 from src.bot.handlers.chat import chat
-from src.config.messages import BotMessages
+from src.config import BotMessages
 from src.storage.schemas import ChatMessage
 
 
