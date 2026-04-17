@@ -63,9 +63,16 @@ async def chat(message: Message):
     text, entities = telegramify_markdown.convert(answer)
     entities = [MessageEntity(**entity.to_dict()) for entity in entities]
     chunk_size = 4096  # ограничение телеграма на длину сообщения
-    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
-    for chunk in chunks:
-        await message.answer(chunk, entities=entities)
+
+    # TODO: сейчас если ответ LLM больше, чем можно отправить в ТГ, сообщения отправляются без форматирования
+    #       Связано это с тем, что мы делим на чанки только текст, а делить в чанки entities проблематично
+    #       Нужно придумать, как это сделать, чтобы форматирование работало хорошо во всех случаях
+    if len(text) <= chunk_size:
+        await message.answer(text, entities=entities)
+    else:
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+        for chunk in chunks:
+            await message.answer(chunk)
 
     await think_msg.delete()
     logger.info(f"Ответ отправлен user_id={user_id}, chat_id={chat_id}")
