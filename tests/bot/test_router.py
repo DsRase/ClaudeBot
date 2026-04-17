@@ -4,10 +4,13 @@ from src.bot.handlers import chat
 from src.bot.router import include_routers
 
 
-def test_include_routers_adds_chat_router(mocker):
-    """Проверяет, что include_routers регистрирует роутер чата в диспетчере."""
-    dp = mocker.MagicMock(spec=Dispatcher)
+class TestIncludeRouters:
+    """Сценарии регистрации роутеров в диспетчере."""
 
-    include_routers(dp)
+    def test_adds_chat_router(self, mocker):
+        """Проверяет, что include_routers регистрирует роутер чата в диспетчере."""
+        dp = mocker.MagicMock(spec=Dispatcher)
 
-    dp.include_router.assert_called_once_with(chat.router)
+        include_routers(dp)
+
+        dp.include_router.assert_called_once_with(chat.router)
