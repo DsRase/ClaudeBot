@@ -9,7 +9,7 @@ from src.config import BotMessages
 from src.config.settings import get_settings
 from src.storage import ChatMessage, add_message, get_context
 from src.utils.logger.LoggerFactory import LoggerFactory
-from src.utils.messager import get_random_message
+from src.utils.messager import get_random_message, split_text_with_entities
 
 router = Router()
 logger = LoggerFactory.get_logger(__name__)
@@ -64,15 +64,8 @@ async def chat(message: Message):
     entities = [MessageEntity(**entity.to_dict()) for entity in entities]
     chunk_size = 4096  # ограничение телеграма на длину сообщения
 
-    # TODO: сейчас если ответ LLM больше, чем можно отправить в ТГ, сообщения отправляются без форматирования
-    #       Связано это с тем, что мы делим на чанки только текст, а делить в чанки entities проблематично
-    #       Нужно придумать, как это сделать, чтобы форматирование работало хорошо во всех случаях
-    if len(text) <= chunk_size:
-        await message.answer(text, entities=entities)
-    else:
-        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
-        for chunk in chunks:
-            await message.answer(chunk)
+    for chunk_text, chunk_entities in split_text_with_entities(text, entities, chunk_size):
+        await message.answer(chunk_text, entities=chunk_entities)
 
     await think_msg.delete()
     logger.info(f"Ответ отправлен user_id={user_id}, chat_id={chat_id}")
