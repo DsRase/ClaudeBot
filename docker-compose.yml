@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ghcr.io/dsrase/claudebot:latest
+    image: ghcr.io/dsrase/claudebot:${BOT_VERSION:-latest}
     env_file: .env
     restart: unless-stopped
     depends_on:
