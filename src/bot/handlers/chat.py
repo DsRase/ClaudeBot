@@ -34,7 +34,11 @@ async def chat(message: Message):
     think_msg_id = await message.answer(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
 
     answer = await ask(message.text, is_premium)
-    await message.answer(answer)
+
+    chunk_size = 4096  # ограничение телеграма на длину сообщения
+    chunks = [answer[i:i + chunk_size] for i in range(0, len(answer), chunk_size)]
+    for chunk in chunks:
+        await message.answer(chunk)
 
     await think_msg_id.delete()
     logger.info(f"Ответ отправлен user_id={user_id}")
