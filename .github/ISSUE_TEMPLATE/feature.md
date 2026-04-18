@@ -2,8 +2,8 @@
 name: Фича
 about: Новый функционал / Большой апдейт
 title: '[FEATURE ] '
-labels: Фича
-assignees: '@DsRase'
+labels: ФИЧА
+assignees: 'DsRase'
 ---
 
 # Проблема/Бизнец-ценность 

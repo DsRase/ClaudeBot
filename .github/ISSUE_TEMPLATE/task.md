@@ -3,7 +3,7 @@ name: Таска
 about: Просто задача
 title: '[TASK] '
 labels: Таска
-assignees: '@DsRase'
+assignees: 'DsRase'
 ---
 
 **ПРОБЛЕМА:**

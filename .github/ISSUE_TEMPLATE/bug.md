@@ -3,7 +3,7 @@ name: Баг
 about: Баг/Инцидент
 title: '[BUG] '
 labels: Баг
-assignees: '@DsRase'
+assignees: 'DsRase'
 ---
 
 **ПРОБЛЕМА:**
