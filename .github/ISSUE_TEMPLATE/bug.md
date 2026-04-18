@@ -1,3 +1,11 @@
+---
+name: Баг
+about: Баг/Инцидент
+title: '[BUG] '
+labels: Баг
+assignees: '@DsRase'
+---
+
 **ПРОБЛЕМА:**
 
 *что случилось*
