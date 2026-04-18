@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     permission_request_timeout: int = 120
 
+    agent_max_iterations: int = 10
+
     search_default_max_results: int = 5
 
     fetch_max_content_chars: int = 10_000

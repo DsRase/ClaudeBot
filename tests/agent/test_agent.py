@@ -164,3 +164,139 @@ class TestAsk:
         _, kwargs = mock_cls.call_args
         assert kwargs["model"] == Settings.model_fields["default_model"].default, \
             "для обычного пользователя выбрана не default_model"
+
+
+def _ai_message(content="", tool_calls=None):
+    """Хелпер: фейковый AIMessage с указанным content и tool_calls."""
+    from langchain_core.messages import AIMessage
+    return AIMessage(content=content, tool_calls=tool_calls or [])
+
+
+class TestAskToolLoop:
+    """Сценарии tool-calling цикла внутри ask."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, monkeypatch):
+        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+    @pytest.mark.asyncio
+    async def test_tool_executed_when_allowed(self, mocker, history):
+        """Allow → тула вызывается, результат уходит в LLM, финальный текст возвращается."""
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        bound = mock_cls.return_value.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(side_effect=[
+            _ai_message(tool_calls=[{"name": "search_web", "args": {"query": "rust"}, "id": "t1"}]),
+            _ai_message(content="готово"),
+        ])
+        permission_requester = mocker.AsyncMock(return_value=True)
+        tool = mocker.MagicMock()
+        tool.ainvoke = mocker.AsyncMock(return_value=[{"title": "T"}])
+        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
+
+        result = await ask(history, permission_requester=permission_requester)
+
+        assert result == "готово"
+        permission_requester.assert_awaited_once()
+        tool.ainvoke.assert_awaited_once_with({"query": "rust"})
+        assert bound.ainvoke.await_count == 2, "после tool-результата нужен второй вызов LLM"
+
+    @pytest.mark.asyncio
+    async def test_denied_sends_denial_to_llm(self, mocker, history):
+        """Deny → тула не вызывается, в LLM уходит ToolMessage с отказом."""
+        from langchain_core.messages import ToolMessage
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        bound = mock_cls.return_value.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(side_effect=[
+            _ai_message(tool_calls=[{"name": "search_web", "args": {"query": "x"}, "id": "t1"}]),
+            _ai_message(content="ну ладно"),
+        ])
+        permission_requester = mocker.AsyncMock(return_value=False)
+        tool = mocker.MagicMock()
+        tool.ainvoke = mocker.AsyncMock()
+        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
+
+        result = await ask(history, permission_requester=permission_requester)
+
+        tool.ainvoke.assert_not_awaited(), "при отказе тула не должна вызываться"
+        second_call_messages = bound.ainvoke.await_args_list[1].args[0]
+        tool_msgs = [m for m in second_call_messages if isinstance(m, ToolMessage)]
+        assert len(tool_msgs) == 1 and "denied" in tool_msgs[0].content.lower(), \
+            f"в LLM не ушёл ToolMessage с отказом: {tool_msgs}"
+        assert result == "ну ладно"
+
+    @pytest.mark.asyncio
+    async def test_tool_error_propagates_as_message(self, mocker, history):
+        """Если тула падает — её исключение оборачивается в ToolMessage с текстом ошибки."""
+        from langchain_core.messages import ToolMessage
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        bound = mock_cls.return_value.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(side_effect=[
+            _ai_message(tool_calls=[{"name": "search_web", "args": {}, "id": "t1"}]),
+            _ai_message(content="ошибочка"),
+        ])
+        permission_requester = mocker.AsyncMock(return_value=True)
+        tool = mocker.MagicMock()
+        tool.ainvoke = mocker.AsyncMock(side_effect=RuntimeError("bang"))
+        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
+
+        await ask(history, permission_requester=permission_requester)
+
+        second_call_messages = bound.ainvoke.await_args_list[1].args[0]
+        tool_msgs = [m for m in second_call_messages if isinstance(m, ToolMessage)]
+        assert tool_msgs and "bang" in tool_msgs[0].content, \
+            f"ошибка тулы не пробросилась в LLM как ToolMessage: {tool_msgs}"
+
+    @pytest.mark.asyncio
+    async def test_no_tools_bound_when_no_permission_requester(self, mocker, history):
+        """Без permission_requester тулы не биндятся в LLM (модель не знает о них)."""
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="ок"))
+
+        await ask(history)
+
+        mock_cls.return_value.bind_tools.assert_not_called(), \
+            "bind_tools не должен вызываться без permission_requester"
+
+    @pytest.mark.asyncio
+    async def test_iteration_cap_respected(self, mocker, history, monkeypatch):
+        """Если модель бесконечно зовёт тулы — выходим по cap'у и возвращаем последний content."""
+        monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
+            "premium_model": "m1", "default_model": "m1",
+            "anthropic_api_key": "k", "max_tokens": 100,
+            "agent_max_iterations": 3,
+        })())
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        bound = mock_cls.return_value.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(return_value=_ai_message(
+            content="пытаюсь",
+            tool_calls=[{"name": "search_web", "args": {}, "id": "t"}],
+        ))
+        permission_requester = mocker.AsyncMock(return_value=True)
+        tool = mocker.MagicMock()
+        tool.ainvoke = mocker.AsyncMock(return_value="x")
+        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
+
+        result = await ask(history, permission_requester=permission_requester)
+
+        assert bound.ainvoke.await_count == 3, "должно быть ровно agent_max_iterations вызовов LLM"
+        assert result == "пытаюсь", "при cap'е возвращается контент последней итерации"
+
+    @pytest.mark.asyncio
+    async def test_permission_requester_gets_user_friendly_description(self, mocker, history):
+        """В permission_requester передаётся русское описание из AgentMessages.tool_descriptions_for_user."""
+        from src.config import AgentMessages
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        bound = mock_cls.return_value.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(side_effect=[
+            _ai_message(tool_calls=[{"name": "search_web", "args": {}, "id": "t1"}]),
+            _ai_message(content="ок"),
+        ])
+        permission_requester = mocker.AsyncMock(return_value=False)
+
+        await ask(history, permission_requester=permission_requester)
+
+        called_with_name, called_with_desc = permission_requester.await_args.args
+        assert called_with_name == "search_web"
+        assert called_with_desc == AgentMessages.tool_descriptions_for_user["search_web"], \
+            "permission_requester получил неожиданное описание тулы"

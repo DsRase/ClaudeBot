@@ -5,6 +5,7 @@ from aiogram import Bot, Router
 from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
+from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
 from src.storage import ChatMessage, add_message, get_context
@@ -80,7 +81,18 @@ async def chat(message: Message, bot: Bot):
 
     think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
 
-    answer = await ask(history, is_premium)
+    async def permission_requester(tool_name: str, tool_description: str) -> bool:
+        return await request_permission(
+            bot=bot,
+            chat_id=chat_id,
+            initiator_user_id=user_id,
+            initiator_username=message.from_user.username,
+            tool_name=tool_name,
+            tool_description=tool_description,
+            reply_to_message_id=None if is_private else message.message_id,
+        )
+
+    answer = await ask(history, is_premium, permission_requester=permission_requester)
 
     assistant_msg = ChatMessage(
         role="assistant",

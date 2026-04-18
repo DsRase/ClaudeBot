@@ -55,7 +55,8 @@ class TestChatHandler:
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, True), "ask должен вызываться с историей и is_premium=True"
+        mock_ask.assert_awaited_once_with(history, True, permission_requester=mocker.ANY), \
+            "ask должен вызываться с историей, is_premium=True и permission_requester"
         message.answer.assert_any_await("ответ от Claude", entities=mocker.ANY), \
             "ответ модели не был отправлен пользователю в личке через answer"
 
@@ -93,7 +94,7 @@ class TestChatHandler:
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, False), \
+        mock_ask.assert_awaited_once_with(history, False, permission_requester=mocker.ANY), \
             "базовый пользователь получил вызов с неверным is_premium"
 
     @pytest.mark.asyncio
