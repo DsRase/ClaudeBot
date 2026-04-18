@@ -286,6 +286,7 @@ class TestAskToolLoop:
             "default_model": "m1",
             "llm_api_key": "k", "llm_base_url": "http://x",
             "max_tokens": 100,
+            "fetch_user_agent": "ua",
             "agent_max_iterations": 3,
         })())
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
@@ -315,6 +316,7 @@ class TestAskToolLoop:
             "default_model": "m1",
             "llm_api_key": "k", "llm_base_url": "http://x",
             "max_tokens": 100,
+            "fetch_user_agent": "ua",
             "agent_max_iterations": 2,
         })())
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")

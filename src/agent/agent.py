@@ -92,6 +92,7 @@ async def ask(
         base_url=settings.llm_base_url,
         timeout=120,
         max_tokens=settings.max_tokens,
+        default_headers={"User-Agent": settings.fetch_user_agent},
     )
     tools = ALL_TOOLS + (extra_tools or [])
     tools_by_name = {t.name: t for t in tools}

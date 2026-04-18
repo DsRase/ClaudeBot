@@ -23,6 +23,9 @@ class TestSettings:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
         monkeypatch.setenv("LLM_API_KEY", "k")
+        monkeypatch.delenv("ACCESS_USER_IDS", raising=False)
+        monkeypatch.delenv("DEFAULT_MODEL", raising=False)
+        monkeypatch.delenv("LLM_BASE_URL", raising=False)
 
         settings = Settings()
 
