@@ -20,7 +20,7 @@ async def add_message(chat_id: int, message: ChatMessage) -> None:
     redis = get_redis()
     settings = get_settings()
     key = _key(chat_id)
-    await redis.rpush(key, message.model_dump_json())
+    await redis.rpush(key, json.dumps(message.model_dump(mode="python"), ensure_ascii=False))
     await redis.ltrim(key, -settings.context_max_stored, -1)
     logger.debug(f"chat_id={chat_id}: добавлено сообщение role={message.role}")
 

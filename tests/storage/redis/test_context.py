@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from src.storage.redis.context import add_message, get_context
@@ -6,7 +8,8 @@ from src.storage.schemas import ChatMessage
 
 @pytest.fixture
 def message():
-    return ChatMessage(role="user", user_id=1, content="привет", timestamp=1000)
+    # без user_id, тк он exclude=True и не выживает roundtrip через Redis
+    return ChatMessage(role="user", id=10, ts=1000, text="привет")
 
 
 class TestContextRepository:
@@ -24,7 +27,8 @@ class TestContextRepository:
 
         await add_message(chat_id=42, message=message)
 
-        mock_redis.rpush.assert_awaited_once_with("context:42", message.model_dump_json()), \
+        expected_payload = json.dumps(message.model_dump(mode="python"), ensure_ascii=False)
+        mock_redis.rpush.assert_awaited_once_with("context:42", expected_payload), \
             "rpush вызван с неверным ключом или сериализованным сообщением"
         mock_redis.ltrim.assert_awaited_once_with("context:42", -500, -1), \
             "ltrim вызван не с теми границами обрезки списка"
@@ -36,7 +40,7 @@ class TestContextRepository:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
         mock_redis = mocker.AsyncMock()
-        mock_redis.lrange.return_value = [message.model_dump_json()]
+        mock_redis.lrange.return_value = [json.dumps(message.model_dump(mode="python"), ensure_ascii=False)]
         mocker.patch("src.storage.redis.context.get_redis", return_value=mock_redis)
         mocker.patch("src.storage.redis.context.get_settings").return_value.context_default_limit = 100
 

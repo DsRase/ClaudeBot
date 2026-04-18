@@ -43,19 +43,24 @@ async def chat(message: Message, bot: Bot):
 
     logger.info(f"user_id={user_id}, chat_id={chat_id}, type={message.chat.type}: получено сообщение")
 
-    reply_to_username = None
-    if message.reply_to_message and message.reply_to_message.from_user:
-        reply_to_username = message.reply_to_message.from_user.username
+    to_username = None
+    reply_id = None
+    if message.reply_to_message:
+        reply_id = message.reply_to_message.message_id
+        if message.reply_to_message.from_user:
+            to_username = message.reply_to_message.from_user.username
 
     user_msg = ChatMessage(
         role="user",
+        id=message.message_id,
+        ts=int(message.date.timestamp()),
+        from_username=message.from_user.username,
+        fname=message.from_user.first_name,
+        lname=message.from_user.last_name,
+        to_username=to_username,
+        reply_id=reply_id,
+        text=message.text,
         user_id=user_id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name,
-        reply_to_username=reply_to_username,
-        content=message.text,
-        timestamp=int(message.date.timestamp()),
     )
     await add_message(chat_id, user_msg)
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: сообщение пользователя сохранено в Redis")
@@ -94,25 +99,37 @@ async def chat(message: Message, bot: Bot):
 
     answer = await ask(history, is_premium, permission_requester=permission_requester)
 
-    assistant_msg = ChatMessage(
-        role="assistant",
-        user_id=None,
-        reply_to_username=message.from_user.username,
-        content=answer,
-        timestamp=int(datetime.now(timezone.utc).timestamp()),
-    )
-    await add_message(chat_id, assistant_msg)
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: ответ ассистента сохранён в Redis")
-
     text, entities = telegramify_markdown.convert(answer)
     entities = [MessageEntity(**entity.to_dict()) for entity in entities]
     chunk_size = 4096  # ограничение телеграма на длину сообщения
-
     chunks = split_text_with_entities(text, entities, chunk_size)
-    for i, (chunk_text, chunk_entities) in enumerate(chunks):
-        # Реплаем отправляем только первый чанк, остальные — обычными сообщениями
-        send = respond if i == 0 else message.answer
-        await send(chunk_text, entities=chunk_entities)
 
-    await think_msg.delete()
+    first_sent = None
+    try:
+        for i, (chunk_text, chunk_entities) in enumerate(chunks):
+            # Реплаем отправляем только первый чанк, остальные — обычными сообщениями
+            send = respond if i == 0 else message.answer
+            sent = await send(chunk_text, entities=chunk_entities)
+            if i == 0:
+                first_sent = sent
+    except Exception:
+        logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
+        raise
+    finally:
+        try:
+            await think_msg.delete()
+        except Exception:
+            logger.warning(f"user_id={user_id}, chat_id={chat_id}: не удалось удалить think_msg")
+
+    assistant_msg = ChatMessage(
+        role="assistant",
+        id=first_sent.message_id,
+        ts=int(datetime.now(timezone.utc).timestamp()),
+        from_username="Пипиндр",
+        to_username=message.from_user.username,
+        reply_id=message.message_id,
+        text=answer,
+    )
+    await add_message(chat_id, assistant_msg)
+    logger.debug(f"user_id={user_id}, chat_id={chat_id}: ответ ассистента сохранён в Redis")
     logger.info(f"user_id={user_id}, chat_id={chat_id}: ответ отправлен")

@@ -11,7 +11,7 @@ BOT_ID = 42
 
 @pytest.fixture
 def history():
-    return [ChatMessage(role="user", user_id=111, content="привет", timestamp=1000)]
+    return [ChatMessage(role="user", id=10, ts=1000, text="привет", user_id=111)]
 
 
 @pytest.fixture
@@ -24,6 +24,7 @@ def bot(mocker):
 @pytest.fixture
 def message(mocker):
     msg = mocker.MagicMock()
+    msg.message_id = 555
     msg.text = "привет"
     msg.chat.id = 999
     msg.chat.type = "private"
@@ -34,8 +35,11 @@ def message(mocker):
     msg.from_user.last_name = "Пупкин"
     msg.date.timestamp.return_value = 1000
     msg.reply_to_message = None
-    msg.answer = mocker.AsyncMock(return_value=mocker.AsyncMock(delete=mocker.AsyncMock()))
-    msg.reply = mocker.AsyncMock(return_value=mocker.AsyncMock(delete=mocker.AsyncMock()))
+    sent = mocker.MagicMock()
+    sent.message_id = 777
+    sent.delete = mocker.AsyncMock()
+    msg.answer = mocker.AsyncMock(return_value=sent)
+    msg.reply = mocker.AsyncMock(return_value=sent)
     return msg
 
 
@@ -163,8 +167,9 @@ class TestChatHandler:
 
     @pytest.mark.asyncio
     async def test_reply_to_username_captured(self, mocker, message, bot, history):
-        """Проверяет, что при ответе на чужое сообщение в Redis сохраняется @username адресата."""
+        """При ответе на чужое сообщение в Redis сохраняются @username адресата и id сообщения."""
         message.reply_to_message = mocker.MagicMock()
+        message.reply_to_message.message_id = 222
         message.reply_to_message.from_user.username = "petya"
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
@@ -177,8 +182,10 @@ class TestChatHandler:
         await chat(message, bot)
 
         saved_user_msg = mock_add.await_args_list[0].args[1]
-        assert saved_user_msg.reply_to_username == "petya", \
-            f"reply_to_username не сохранился, получено: {saved_user_msg.reply_to_username!r}"
+        assert saved_user_msg.to_username == "petya", \
+            f"to_username не сохранился, получено: {saved_user_msg.to_username!r}"
+        assert saved_user_msg.reply_id == 222, \
+            f"reply_id не сохранился, получено: {saved_user_msg.reply_id!r}"
 
     @pytest.mark.asyncio
     async def test_group_reply_to_bot_triggers_reply(self, mocker, message, bot, history):

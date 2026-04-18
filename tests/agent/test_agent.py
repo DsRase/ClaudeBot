@@ -8,7 +8,7 @@ from src.storage.schemas import ChatMessage
 @pytest.fixture
 def history():
     return [
-        ChatMessage(role="user", user_id=1, content="привет", timestamp=1000),
+        ChatMessage(role="user", id=10, ts=1000, text="привет", user_id=1),
     ]
 
 
@@ -45,36 +45,14 @@ class TestAsk:
             "для премиум пользователя выбрана не premium_model"
 
     @pytest.mark.asyncio
-    async def test_user_metadata_prefixed_in_llm_message(self, mocker, monkeypatch):
-        """Проверяет, что метаданные юзера (@username, имя) попадают в сообщение, отправляемое LLM."""
+    async def test_user_metadata_in_jsonl_dump(self, mocker, monkeypatch):
+        """Проверяет, что метаданные юзера попадают в JSONL-дамп для LLM (включая from_username/fname/lname)."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
         history = [ChatMessage(
-            role="user", user_id=1, content="привет", timestamp=1,
-            username="vasya", first_name="Вася", last_name="Пупкин",
-        )]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
-        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
-
-        await ask(history)
-
-        sent_messages = mock_cls.return_value.ainvoke.await_args[0][0]
-        user_msg_content = sent_messages[-1].content
-        assert "vasya" in user_msg_content and "Вася" in user_msg_content, \
-            f"метаданные юзера не попали в сообщение для LLM: {user_msg_content!r}"
-        assert "привет" in user_msg_content, \
-            f"оригинальный контент потерян при префиксации: {user_msg_content!r}"
-
-    @pytest.mark.asyncio
-    async def test_reply_target_added_to_llm_message(self, mocker, monkeypatch):
-        """Проверяет, что reply_to_username попадает в префикс сообщения для LLM."""
-        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-
-        history = [ChatMessage(
-            role="user", user_id=1, content="ну ок", timestamp=1,
-            username="vasya", first_name="Вася", reply_to_username="petya",
+            role="user", id=10, ts=1, text="привет", user_id=1,
+            from_username="vasya", fname="Вася", lname="Пупкин",
         )]
         mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
@@ -82,8 +60,47 @@ class TestAsk:
         await ask(history)
 
         sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
-        assert "ответил @petya" in sent, \
-            f"reply_to_username не оказался в префиксе сообщения: {sent!r}"
+        assert '"from_username": "vasya"' in sent, f"from_username не в JSONL: {sent!r}"
+        assert '"fname": "Вася"' in sent, f"fname не в JSONL: {sent!r}"
+        assert '"lname": "Пупкин"' in sent, f"lname не в JSONL: {sent!r}"
+        assert '"text": "привет"' in sent, f"text не в JSONL: {sent!r}"
+
+    @pytest.mark.asyncio
+    async def test_reply_fields_in_jsonl_dump(self, mocker, monkeypatch):
+        """Проверяет, что to_username и reply_id попадают в JSONL-дамп."""
+        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+        history = [ChatMessage(
+            role="user", id=10, ts=1, text="ну ок", user_id=1,
+            from_username="vasya", to_username="petya", reply_id=99,
+        )]
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
+
+        await ask(history)
+
+        sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
+        assert '"to_username": "petya"' in sent, f"to_username не в JSONL: {sent!r}"
+        assert '"reply_id": 99' in sent, f"reply_id не в JSONL: {sent!r}"
+
+    @pytest.mark.asyncio
+    async def test_user_id_not_dumped_to_llm(self, mocker, monkeypatch):
+        """user_id — внутреннее поле, в LLM не уходит."""
+        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+        history = [ChatMessage(
+            role="user", id=10, ts=1, text="привет", user_id=999888,
+        )]
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
+
+        await ask(history)
+
+        sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
+        assert "999888" not in sent, f"user_id просочился в дамп для LLM: {sent!r}"
+        assert "user_id" not in sent, f"ключ user_id попал в дамп для LLM: {sent!r}"
 
     @pytest.mark.asyncio
     async def test_history_collapsed_into_single_human_message(self, mocker, monkeypatch):
@@ -93,9 +110,9 @@ class TestAsk:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
         history = [
-            ChatMessage(role="user", user_id=1, content="один", timestamp=1, username="vasya"),
-            ChatMessage(role="assistant", user_id=None, content="ответ1", timestamp=2),
-            ChatMessage(role="user", user_id=2, content="два", timestamp=3, username="petya"),
+            ChatMessage(role="user", id=1, ts=1, text="один", from_username="vasya", user_id=1),
+            ChatMessage(role="assistant", id=2, ts=2, text="ответ1", from_username="Пипиндр"),
+            ChatMessage(role="user", id=3, ts=3, text="два", from_username="petya", user_id=2),
         ]
         mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
@@ -114,8 +131,8 @@ class TestAsk:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
         history = [
-            ChatMessage(role="user", user_id=1, content="старое", timestamp=1, username="vasya"),
-            ChatMessage(role="user", user_id=2, content="новое", timestamp=3, username="petya"),
+            ChatMessage(role="user", id=1, ts=1, text="старое", from_username="vasya", user_id=1),
+            ChatMessage(role="user", id=2, ts=3, text="новое", from_username="petya", user_id=2),
         ]
         mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
@@ -129,17 +146,17 @@ class TestAsk:
         assert content.find("старое") < marker_pos, "контекстное сообщение попало в секцию триггера"
 
     @pytest.mark.asyncio
-    async def test_assistant_reply_target_in_history(self, mocker, monkeypatch):
-        """Проверяет, что ответ ассистента в истории отображается с указанием, кому он отвечал."""
+    async def test_assistant_role_marked_in_history(self, mocker, monkeypatch):
+        """Ответ ассистента в JSONL-дампе помечен role=assistant и from_username=Пипиндр."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
 
         history = [
             ChatMessage(
-                role="assistant", user_id=None, content="мой ответ",
-                timestamp=1, reply_to_username="vasya",
+                role="assistant", id=1, ts=1, text="мой ответ",
+                from_username="Пипиндр", to_username="vasya", reply_id=100,
             ),
-            ChatMessage(role="user", user_id=2, content="новое", timestamp=2, username="petya"),
+            ChatMessage(role="user", id=2, ts=2, text="новое", from_username="petya", user_id=2),
         ]
         mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
@@ -147,8 +164,9 @@ class TestAsk:
         await ask(history)
 
         content = mock_cls.return_value.ainvoke.await_args[0][0][1].content
-        assert "Пипиндр ответил @vasya: мой ответ" in content, \
-            f"строка ассистента не содержит указания адресата: {content!r}"
+        assert '"role": "assistant"' in content, f"role ассистента не в дампе: {content!r}"
+        assert '"from_username": "Пипиндр"' in content, f"from_username ассистента не в дампе: {content!r}"
+        assert '"to_username": "vasya"' in content, f"to_username не в дампе: {content!r}"
 
     @pytest.mark.asyncio
     async def test_uses_default_model(self, mocker, monkeypatch, history):

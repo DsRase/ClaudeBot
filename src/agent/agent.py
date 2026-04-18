@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Awaitable, Callable
 
@@ -16,41 +17,22 @@ PermissionRequester = Callable[[str, str], Awaitable[bool]]
 _TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
 
 
-def _format_user_line(msg: ChatMessage) -> str:
-    """Форматирует строку user-сообщения с метаданными отправителя и адресата."""
-    parts = []
-    if msg.username:
-        parts.append(f"@{msg.username}")
-    name = " ".join(p for p in (msg.first_name, msg.last_name) if p)
-    if name:
-        parts.append(name)
-    sender = f"[{' | '.join(parts)}]" if parts else "[unknown]"
-    reply = f" ответил @{msg.reply_to_username}" if msg.reply_to_username else ""
-    return f"{sender}{reply}: {msg.content}"
-
-
-def _format_assistant_line(msg: ChatMessage) -> str:
-    """Форматирует строку ответа бота с указанием, кому конкретно он ответил."""
-    reply = f" ответил @{msg.reply_to_username}" if msg.reply_to_username else ""
-    return f"Пипиндр{reply}: {msg.content}"
-
-
-def _format_line(msg: ChatMessage) -> str:
-    return _format_user_line(msg) if msg.role == "user" else _format_assistant_line(msg)
+def _dump_msg(msg: ChatMessage) -> str:
+    return json.dumps(msg.model_dump(mode="json"), ensure_ascii=False)
 
 
 def _render_history(history: list[ChatMessage]) -> str:
-    """Сворачивает историю в одну строку: блок контекста + блок триггерного сообщения."""
+    """Сворачивает историю в одну строку: блок контекста + блок триггерного сообщения (JSONL)."""
     if not history:
         return "=== Message to reply to NOW ===\n(no message)"
     *context, trigger = history
     lines = []
     if context:
         lines.append("=== Chat history (context only, do not respond to these) ===")
-        lines.extend(_format_line(m) for m in context)
+        lines.extend(_dump_msg(m) for m in context)
         lines.append("")
     lines.append("=== Message to reply to NOW ===")
-    lines.append(_format_line(trigger))
+    lines.append(_dump_msg(trigger))
     return "\n".join(lines)
 
 
