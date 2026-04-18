@@ -1,5 +1,28 @@
 class AgentMessages:
     """Класс с константными сообщениями для агента (не для юзера)."""
+
+    tool_descriptions_for_user = {
+        "search_web": "🔎 Поиск в интернете через DuckDuckGo по заданному запросу.",
+        "fetch_url": "🌐 Скачать страницу по URL и достать оттуда текст.",
+    }
+
+    tool_descriptions_for_llm = {
+        "search_web": (
+            "Search the web via DuckDuckGo. Use when you need fresh information, "
+            "facts, news, or anything outside your training data. "
+            "Returns a list of {title, url, snippet}. "
+            "Argument: `query` (string) — what to search for. "
+            "Optional: `max_results` (int, default from settings)."
+        ),
+        "fetch_url": (
+            "Download a web page by URL and return its readable text. "
+            "Use after `search_web` when you need full content of a specific result, "
+            "or when the user gives you a direct URL. "
+            "Output is truncated to a reasonable length. "
+            "Argument: `url` (string) — direct http(s) URL."
+        ),
+    }
+
     system_prompt = """
     You are a Telegram AI assistant named "Пипиндр" (@mega_pipindr_bot).
     Your primary goal is to provide correct, useful, and complete answers. This has the highest priority.

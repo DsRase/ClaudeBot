@@ -6,11 +6,10 @@ from aiogram import Bot
 
 from src.bot.markups import build_permission_keyboard
 from src.bot.permissions.state import PendingRequest, get_permission_state
+from src.config import get_settings
 from src.utils.logger.LoggerFactory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
-
-DEFAULT_TIMEOUT = 120
 
 
 def _build_prompt(initiator_username: str | None, tool_name: str, tool_description: str) -> str:
@@ -31,9 +30,11 @@ async def request_permission(
     tool_name: str,
     tool_description: str,
     reply_to_message_id: int | None = None,
-    timeout: int = DEFAULT_TIMEOUT,
+    timeout: int | None = None,
 ) -> bool:
     """Запрашивает у инициатора разрешение на вызов тулы. Возвращает True/False по решению или таймауту."""
+    if timeout is None:
+        timeout = get_settings().permission_request_timeout
     state = get_permission_state()
 
     if state.is_allowed_in_session(initiator_user_id, tool_name):

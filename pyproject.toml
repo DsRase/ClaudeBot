@@ -15,6 +15,9 @@ dependencies = [
     "pytest-asyncio>=0.23",
     "pytest-mock>=3.12",
     "requests>=2.33.1",
+    "ddgs>=9.14.0",
+    "httpx>=0.28.1",
+    "beautifulsoup4>=4.14.3",
 ]
 
 [tool.pytest.ini_options]

@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     context_max_stored: int = 500
     context_default_limit: int = 50
 
+    permission_request_timeout: int = 120
+
+    search_default_max_results: int = 5
+
+    fetch_max_content_chars: int = 10_000
+    fetch_request_timeout: int = 15
+    fetch_user_agent: str = "Mozilla/5.0 (compatible; PipindrBot/1.0)"
+
     model_config = {
         "env_file": ".env",
     }
