@@ -59,7 +59,7 @@ class TestChatHandler:
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, True, permission_requester=mocker.ANY), \
+        mock_ask.assert_awaited_once_with(history, True, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
             "ask должен вызываться с историей, is_premium=True и permission_requester"
         message.answer.assert_any_await("ответ от Claude", entities=mocker.ANY), \
             "ответ модели не был отправлен пользователю в личке через answer"
@@ -98,8 +98,24 @@ class TestChatHandler:
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, False, permission_requester=mocker.ANY), \
+        mock_ask.assert_awaited_once_with(history, False, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
             "базовый пользователь получил вызов с неверным is_premium"
+
+    @pytest.mark.asyncio
+    async def test_chat_scoped_tools_passed_to_ask(self, mocker, message, bot, history):
+        """В ask должна передаваться chat-scoped тула read_full_history."""
+        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
+            premium_user_ids=[111], base_user_ids=[],
+        )
+        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
+        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
+        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ok"))
+
+        await chat(message, bot)
+
+        extra_tools = mock_ask.await_args.kwargs["extra_tools"]
+        names = [t.name for t in extra_tools]
+        assert "read_full_history" in names, f"read_full_history не попал в extra_tools: {names}"
 
     @pytest.mark.asyncio
     async def test_non_text_message_skipped(self, mocker, message, bot):

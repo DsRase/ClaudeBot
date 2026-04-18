@@ -1,6 +1,6 @@
 import pytest
 
-from src.agent.langTools import ALL_TOOLS, fetch_url_tool, search_web_tool
+from src.agent.langTools import ALL_TOOLS, fetch_url_tool, make_chat_scoped_tools, search_web_tool
 from src.config import AgentMessages
 
 
@@ -36,3 +36,26 @@ class TestLangTools:
 
         spy.assert_awaited_once_with("http://example.com")
         assert result == "text"
+
+
+class TestMakeChatScopedTools:
+    """Фабрика тул, которым нужен chat_id в замыкании."""
+
+    def test_returns_read_full_history(self):
+        """Фабрика возвращает тулу read_full_history с правильным именем и описанием."""
+        tools = make_chat_scoped_tools(chat_id=42)
+        names = [t.name for t in tools]
+        assert "read_full_history" in names, f"read_full_history не в списке: {names}"
+        rfh = next(t for t in tools if t.name == "read_full_history")
+        assert rfh.description == AgentMessages.tool_descriptions_for_llm["read_full_history"]
+
+    @pytest.mark.asyncio
+    async def test_chat_id_captured_in_closure(self, mocker):
+        """chat_id попадает в pure-функцию через замыкание, без аргументов от LLM."""
+        spy = mocker.patch("src.agent.langTools.read_full_history", new=mocker.AsyncMock(return_value=""))
+        tools = make_chat_scoped_tools(chat_id=12345)
+        rfh = next(t for t in tools if t.name == "read_full_history")
+
+        await rfh.ainvoke({})
+
+        spy.assert_awaited_once_with(12345), "chat_id из замыкания не передался в read_full_history"

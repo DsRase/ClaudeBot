@@ -14,8 +14,6 @@ logger = LoggerFactory.get_logger(__name__)
 
 PermissionRequester = Callable[[str, str], Awaitable[bool]]
 
-_TOOLS_BY_NAME = {t.name: t for t in ALL_TOOLS}
-
 
 def _dump_msg(msg: ChatMessage) -> str:
     return json.dumps(msg.model_dump(mode="json"), ensure_ascii=False)
@@ -48,7 +46,11 @@ def _extract_text(content) -> str:
     return ""
 
 
-async def _execute_tool_call(call: dict, permission_requester: PermissionRequester) -> ToolMessage:
+async def _execute_tool_call(
+    call: dict,
+    tools_by_name: dict,
+    permission_requester: PermissionRequester,
+) -> ToolMessage:
     """Спрашивает разрешение, вызывает тулу и возвращает ToolMessage с результатом или причиной отказа."""
     tool_name = call["name"]
     tool_args = call.get("args", {})
@@ -60,7 +62,7 @@ async def _execute_tool_call(call: dict, permission_requester: PermissionRequest
         logger.info(f"tool '{tool_name}' отклонён юзером (id={tool_id})")
         return ToolMessage(content="User denied permission to use this tool.", tool_call_id=tool_id)
 
-    tool = _TOOLS_BY_NAME.get(tool_name)
+    tool = tools_by_name.get(tool_name)
     if tool is None:
         logger.warning(f"LLM попросила неизвестную тулу: {tool_name}")
         return ToolMessage(content=f"Unknown tool: {tool_name}", tool_call_id=tool_id)
@@ -78,6 +80,7 @@ async def ask(
     history: list[ChatMessage],
     is_premium: bool = False,
     permission_requester: PermissionRequester | None = None,
+    extra_tools: list | None = None,
 ) -> str:
     """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ."""
     settings = get_settings()
@@ -90,7 +93,9 @@ async def ask(
         timeout=120,
         max_tokens=settings.max_tokens,
     )
-    llm_with_tools = llm.bind_tools(ALL_TOOLS) if permission_requester is not None else llm
+    tools = ALL_TOOLS + (extra_tools or [])
+    tools_by_name = {t.name: t for t in tools}
+    llm_with_tools = llm.bind_tools(tools) if permission_requester is not None else llm
 
     messages = [
         SystemMessage(content=AgentMessages.system_prompt),
@@ -110,7 +115,7 @@ async def ask(
         messages.append(response)
         logger.info(f"итерация {iteration + 1}: модель попросила {len(tool_calls)} tool_call(s)")
         for call in tool_calls:
-            tool_msg = await _execute_tool_call(call, permission_requester)
+            tool_msg = await _execute_tool_call(call, tools_by_name, permission_requester)
             messages.append(tool_msg)
     else:
         logger.warning(

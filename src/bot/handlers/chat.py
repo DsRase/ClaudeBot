@@ -5,6 +5,7 @@ from aiogram import Bot, Router
 from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
+from src.agent.langTools import make_chat_scoped_tools
 from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
@@ -97,7 +98,12 @@ async def chat(message: Message, bot: Bot):
             reply_to_message_id=None if is_private else message.message_id,
         )
 
-    answer = await ask(history, is_premium, permission_requester=permission_requester)
+    answer = await ask(
+        history,
+        is_premium,
+        permission_requester=permission_requester,
+        extra_tools=make_chat_scoped_tools(chat_id),
+    )
 
     text, entities = telegramify_markdown.convert(answer)
     entities = [MessageEntity(**entity.to_dict()) for entity in entities]

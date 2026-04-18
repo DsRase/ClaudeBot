@@ -4,6 +4,7 @@ class AgentMessages:
     tool_descriptions_for_user = {
         "search_web": "🔎 Поиск в интернете через DuckDuckGo по заданному запросу.",
         "fetch_url": "🌐 Скачать страницу по URL и достать оттуда текст.",
+        "read_full_history": "📜 Прочитать всю доступную историю чата (до 500 сообщений).",
     }
 
     tool_descriptions_for_llm = {
@@ -20,6 +21,15 @@ class AgentMessages:
             "or when the user gives you a direct URL. "
             "Output is truncated to a reasonable length. "
             "Argument: `url` (string) — direct http(s) URL."
+        ),
+        "read_full_history": (
+            "Read the full available chat scrollback (up to ~500 messages) for THIS chat. "
+            "Use ONLY when the user EXPLICITLY asks to read, search, summarize or recall "
+            "old messages / chat history / scrollback (e.g. 'что мы обсуждали вчера', "
+            "'найди в истории', 'прочитай весь чат'). "
+            "DO NOT call for normal conversation — the recent context is already provided. "
+            "Calling this without explicit user intent wastes a lot of tokens. "
+            "No arguments. Returns JSONL of messages, same schema as the normal context."
         ),
     }
 

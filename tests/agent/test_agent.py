@@ -209,10 +209,10 @@ class TestAskToolLoop:
         ])
         permission_requester = mocker.AsyncMock(return_value=True)
         tool = mocker.MagicMock()
+        tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value=[{"title": "T"}])
-        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
 
-        result = await ask(history, permission_requester=permission_requester)
+        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
 
         assert result == "готово"
         permission_requester.assert_awaited_once()
@@ -231,10 +231,10 @@ class TestAskToolLoop:
         ])
         permission_requester = mocker.AsyncMock(return_value=False)
         tool = mocker.MagicMock()
+        tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock()
-        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
 
-        result = await ask(history, permission_requester=permission_requester)
+        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
 
         tool.ainvoke.assert_not_awaited(), "при отказе тула не должна вызываться"
         second_call_messages = bound.ainvoke.await_args_list[1].args[0]
@@ -255,10 +255,10 @@ class TestAskToolLoop:
         ])
         permission_requester = mocker.AsyncMock(return_value=True)
         tool = mocker.MagicMock()
+        tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(side_effect=RuntimeError("bang"))
-        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
 
-        await ask(history, permission_requester=permission_requester)
+        await ask(history, permission_requester=permission_requester, extra_tools=[tool])
 
         second_call_messages = bound.ainvoke.await_args_list[1].args[0]
         tool_msgs = [m for m in second_call_messages if isinstance(m, ToolMessage)]
@@ -294,10 +294,10 @@ class TestAskToolLoop:
         unbound.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="итог по найденному"))
         permission_requester = mocker.AsyncMock(return_value=True)
         tool = mocker.MagicMock()
+        tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value="x")
-        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
 
-        result = await ask(history, permission_requester=permission_requester)
+        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
 
         assert bound.ainvoke.await_count == 3, "должно быть ровно agent_max_iterations вызовов LLM с тулами"
         unbound.ainvoke.assert_awaited_once(), "после cap'а нужен финальный вызов БЕЗ тул"
@@ -321,10 +321,10 @@ class TestAskToolLoop:
         unbound.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="ну вот"))
         permission_requester = mocker.AsyncMock(return_value=True)
         tool = mocker.MagicMock()
+        tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value="результат поиска")
-        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
 
-        await ask(history, permission_requester=permission_requester)
+        await ask(history, permission_requester=permission_requester, extra_tools=[tool])
 
         final_messages = unbound.ainvoke.await_args.args[0]
         tool_results = [m for m in final_messages if isinstance(m, ToolMessage)]
