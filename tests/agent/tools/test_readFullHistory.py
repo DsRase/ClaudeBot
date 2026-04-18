@@ -13,7 +13,7 @@ class TestReadFullHistory:
     async def test_uses_max_stored_limit(self, mocker, monkeypatch):
         """read_full_history запрашивает context_max_stored сообщений, а не дефолтный лимит."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch(
             "src.agent.tools.history.readFullHistory.get_settings"
         ).return_value.context_max_stored = 500
@@ -31,7 +31,7 @@ class TestReadFullHistory:
     async def test_returns_jsonl(self, mocker, monkeypatch):
         """Возвращается JSONL: одно сообщение на строку, ts уже отформатирован для LLM."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch(
             "src.agent.tools.history.readFullHistory.get_settings"
         ).return_value.context_max_stored = 500
@@ -55,7 +55,7 @@ class TestReadFullHistory:
     async def test_empty_history_returns_empty_string(self, mocker, monkeypatch):
         """Пустая история — пустая строка."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch(
             "src.agent.tools.history.readFullHistory.get_settings"
         ).return_value.context_max_stored = 500

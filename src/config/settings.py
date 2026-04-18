@@ -4,14 +4,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Основной конфиг с .env и прочим."""
     telegram_token: str
-    anthropic_api_key: str
+    llm_api_key: str
+    llm_base_url: str = "https://api.stepanovikov.uno/v1"
 
     max_tokens: int = 1024
 
-    premium_user_ids: list[int] = []
-    base_user_ids: list[int] = []
-    premium_model: str = "claude-opus-4-6"
-    default_model: str = "claude-sonnet-4-6"
+    access_user_ids: list[int] = []
+    default_model: str = "claude-opus-4.6"
 
     redis_url: str = "redis://localhost:6379"
     context_max_stored: int = 500

@@ -47,31 +47,29 @@ class TestChatHandler:
     """Сценарии обработки входящего сообщения хендлером chat."""
 
     @pytest.mark.asyncio
-    async def test_premium_user_gets_llm_answer(self, mocker, message, bot, history):
-        """Проверяет, что премиум пользователь в личке получает ответ от LLM с is_premium=True."""
+    async def test_allowed_user_gets_llm_answer(self, mocker, message, bot, history):
+        """Проверяет, что пользователь из access-списка в личке получает ответ от LLM."""
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111, 222],
-            base_user_ids=[],
+            access_user_ids=[111, 222],
         )
         mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ от Claude"))
+        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ от LLM"))
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, True, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
-            "ask должен вызываться с историей, is_premium=True и permission_requester"
-        message.answer.assert_any_await("ответ от Claude", entities=mocker.ANY), \
+        mock_ask.assert_awaited_once_with(history, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
+            "ask должен вызываться с историей и permission_requester"
+        message.answer.assert_any_await("ответ от LLM", entities=mocker.ANY), \
             "ответ модели не был отправлен пользователю в личке через answer"
 
     @pytest.mark.asyncio
-    async def test_non_premium_user_gets_rejection(self, mocker, message, bot):
-        """Проверяет, что пользователь не из списков получает отказ и LLM не вызывается."""
+    async def test_unknown_user_gets_rejection(self, mocker, message, bot):
+        """Проверяет, что пользователь не из access-списка получает отказ и LLM не вызывается."""
         message.from_user.id = 999
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111, 222],
-            base_user_ids=[],
+            access_user_ids=[111, 222],
         )
         mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
@@ -81,31 +79,13 @@ class TestChatHandler:
         mock_ask.assert_not_awaited(), "ask не должен был вызываться, но был вызван"
         call_args = message.answer.await_args
         actual_text = call_args[0][0] if call_args[0] else None
-        assert actual_text in BotMessages.NOT_PREMIUM, "вернулся текст не из списка NOT_PREMIUM"
-
-    @pytest.mark.asyncio
-    async def test_base_user_gets_llm_answer(self, mocker, message, bot, history):
-        """Проверяет, что базовый пользователь получает ответ от LLM с is_premium=False."""
-        message.from_user.id = 333
-
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111],
-            base_user_ids=[333],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ"))
-
-        await chat(message, bot)
-
-        mock_ask.assert_awaited_once_with(history, False, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
-            "базовый пользователь получил вызов с неверным is_premium"
+        assert actual_text in BotMessages.NO_ACCESS, "вернулся текст не из списка NO_ACCESS"
 
     @pytest.mark.asyncio
     async def test_chat_scoped_tools_passed_to_ask(self, mocker, message, bot, history):
         """В ask должна передаваться chat-scoped тула read_full_history."""
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111], base_user_ids=[],
+            access_user_ids=[111],
         )
         mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
@@ -150,7 +130,7 @@ class TestChatHandler:
         message.text = "просто болтаем без бота"
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111], base_user_ids=[],
+            access_user_ids=[111],
         )
         mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
@@ -169,7 +149,7 @@ class TestChatHandler:
         message.text = f"@{BOT_USERNAME} как дела?"
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111], base_user_ids=[],
+            access_user_ids=[111],
         )
         mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
@@ -189,7 +169,7 @@ class TestChatHandler:
         message.reply_to_message.from_user.username = "petya"
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111], base_user_ids=[],
+            access_user_ids=[111],
         )
         mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
@@ -213,7 +193,7 @@ class TestChatHandler:
         message.reply_to_message.from_user.username = None
 
         mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            premium_user_ids=[111], base_user_ids=[],
+            access_user_ids=[111],
         )
         mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
         mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))

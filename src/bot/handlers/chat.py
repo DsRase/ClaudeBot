@@ -74,12 +74,9 @@ async def chat(message: Message, bot: Bot):
     respond = message.answer if is_private else message.reply
 
     settings = get_settings()
-    is_premium = False
-    if user_id in settings.premium_user_ids:
-        is_premium = True
-    elif user_id not in settings.base_user_ids:
+    if user_id not in settings.access_user_ids:
         logger.warning(f"user_id={user_id}, chat_id={chat_id}: доступ отклонён")
-        await respond(get_random_message(BotMessages.NOT_PREMIUM))
+        await respond(get_random_message(BotMessages.NO_ACCESS))
         return
 
     history = await get_context(chat_id)
@@ -100,7 +97,6 @@ async def chat(message: Message, bot: Bot):
 
     answer = await ask(
         history,
-        is_premium,
         permission_requester=permission_requester,
         extra_tools=make_chat_scoped_tools(chat_id),
     )

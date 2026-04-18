@@ -19,9 +19,9 @@ class TestAsk:
     async def test_returns_llm_response(self, mocker, monkeypatch, history):
         """Проверяет, что ask возвращает content из ответа модели."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
-        mock_llm = mocker.patch("src.agent.agent.ChatAnthropic").return_value
+        mock_llm = mocker.patch("src.agent.agent.ChatOpenAI").return_value
         mock_llm.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="ответ"))
 
         result = await ask(history)
@@ -30,31 +30,49 @@ class TestAsk:
         assert result == "ответ", "ask вернул не тот content, что ожидался"
 
     @pytest.mark.asyncio
-    async def test_uses_premium_model(self, mocker, monkeypatch, history):
-        """Проверяет, что для премиум пользователя выбирается premium_model из настроек."""
+    async def test_uses_default_model(self, mocker, monkeypatch, history):
+        """Проверяет, что выбирается default_model из настроек."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history, is_premium=True)
+        await ask(history)
 
         _, kwargs = mock_cls.call_args
-        assert kwargs["model"] == Settings.model_fields["premium_model"].default, \
-            "для премиум пользователя выбрана не premium_model"
+        assert kwargs["model"] == Settings.model_fields["default_model"].default, \
+            "выбрана не default_model из настроек"
+
+    @pytest.mark.asyncio
+    async def test_passes_base_url_and_api_key(self, mocker, monkeypatch, history):
+        """В ChatOpenAI пробрасываются base_url и api_key из настроек."""
+        from src.config import get_settings
+        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+        monkeypatch.setenv("LLM_API_KEY", "secret")
+        get_settings.cache_clear()
+
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
+        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
+
+        await ask(history)
+
+        _, kwargs = mock_cls.call_args
+        assert kwargs["api_key"] == "secret", "api_key не пробросился из настроек"
+        assert kwargs["base_url"] == Settings.model_fields["llm_base_url"].default, \
+            "base_url не пробросился из настроек"
 
     @pytest.mark.asyncio
     async def test_user_metadata_in_jsonl_dump(self, mocker, monkeypatch):
         """Проверяет, что метаданные юзера попадают в JSONL-дамп для LLM (включая from_username/fname/lname)."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [ChatMessage(
             role="user", id=10, ts=1, text="привет", user_id=1,
             from_username="vasya", fname="Вася", lname="Пупкин",
         )]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -69,13 +87,13 @@ class TestAsk:
     async def test_reply_fields_in_jsonl_dump(self, mocker, monkeypatch):
         """Проверяет, что to_username и reply_id попадают в JSONL-дамп."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [ChatMessage(
             role="user", id=10, ts=1, text="ну ок", user_id=1,
             from_username="vasya", to_username="petya", reply_id=99,
         )]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -88,12 +106,12 @@ class TestAsk:
     async def test_user_id_not_dumped_to_llm(self, mocker, monkeypatch):
         """user_id — внутреннее поле, в LLM не уходит."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [ChatMessage(
             role="user", id=10, ts=1, text="привет", user_id=999888,
         )]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -107,14 +125,14 @@ class TestAsk:
         """Проверяет, что вся история сворачивается в один HumanMessage без отдельных AIMessage."""
         from langchain_core.messages import HumanMessage, SystemMessage
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [
             ChatMessage(role="user", id=1, ts=1, text="один", from_username="vasya", user_id=1),
             ChatMessage(role="assistant", id=2, ts=2, text="ответ1", from_username="Пипиндр"),
             ChatMessage(role="user", id=3, ts=3, text="два", from_username="petya", user_id=2),
         ]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -128,13 +146,13 @@ class TestAsk:
     async def test_trigger_separated_from_history(self, mocker, monkeypatch):
         """Проверяет, что последнее сообщение явно отделено маркером 'Message to reply to NOW'."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [
             ChatMessage(role="user", id=1, ts=1, text="старое", from_username="vasya", user_id=1),
             ChatMessage(role="user", id=2, ts=3, text="новое", from_username="petya", user_id=2),
         ]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -149,7 +167,7 @@ class TestAsk:
     async def test_assistant_role_marked_in_history(self, mocker, monkeypatch):
         """Ответ ассистента в JSONL-дампе помечен role=assistant и from_username=Пипиндр."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         history = [
             ChatMessage(
@@ -158,7 +176,7 @@ class TestAsk:
             ),
             ChatMessage(role="user", id=2, ts=2, text="новое", from_username="petya", user_id=2),
         ]
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
         await ask(history)
@@ -167,21 +185,6 @@ class TestAsk:
         assert '"role": "assistant"' in content, f"role ассистента не в дампе: {content!r}"
         assert '"from_username": "Пипиндр"' in content, f"from_username ассистента не в дампе: {content!r}"
         assert '"to_username": "vasya"' in content, f"to_username не в дампе: {content!r}"
-
-    @pytest.mark.asyncio
-    async def test_uses_default_model(self, mocker, monkeypatch, history):
-        """Проверяет, что для обычного пользователя выбирается default_model из настроек."""
-        monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
-        mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
-
-        await ask(history, is_premium=False)
-
-        _, kwargs = mock_cls.call_args
-        assert kwargs["model"] == Settings.model_fields["default_model"].default, \
-            "для обычного пользователя выбрана не default_model"
 
 
 def _ai_message(content="", tool_calls=None):
@@ -196,12 +199,12 @@ class TestAskToolLoop:
     @pytest.fixture(autouse=True)
     def _env(self, monkeypatch):
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
     @pytest.mark.asyncio
     async def test_tool_executed_when_allowed(self, mocker, history):
         """Allow → тула вызывается, результат уходит в LLM, финальный текст возвращается."""
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         bound = mock_cls.return_value.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(side_effect=[
             _ai_message(tool_calls=[{"name": "search_web", "args": {"query": "rust"}, "id": "t1"}]),
@@ -223,7 +226,7 @@ class TestAskToolLoop:
     async def test_denied_sends_denial_to_llm(self, mocker, history):
         """Deny → тула не вызывается, в LLM уходит ToolMessage с отказом."""
         from langchain_core.messages import ToolMessage
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         bound = mock_cls.return_value.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(side_effect=[
             _ai_message(tool_calls=[{"name": "search_web", "args": {"query": "x"}, "id": "t1"}]),
@@ -247,7 +250,7 @@ class TestAskToolLoop:
     async def test_tool_error_propagates_as_message(self, mocker, history):
         """Если тула падает — её исключение оборачивается в ToolMessage с текстом ошибки."""
         from langchain_core.messages import ToolMessage
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         bound = mock_cls.return_value.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(side_effect=[
             _ai_message(tool_calls=[{"name": "search_web", "args": {}, "id": "t1"}]),
@@ -268,7 +271,7 @@ class TestAskToolLoop:
     @pytest.mark.asyncio
     async def test_no_tools_bound_when_no_permission_requester(self, mocker, history):
         """Без permission_requester тулы не биндятся в LLM (модель не знает о них)."""
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="ок"))
 
         await ask(history)
@@ -280,11 +283,12 @@ class TestAskToolLoop:
     async def test_iteration_cap_triggers_final_unbound_call(self, mocker, history, monkeypatch):
         """При cap'е делаем добавочный вызов LLM без тул, чтобы получить текстовый итог."""
         monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
-            "premium_model": "m1", "default_model": "m1",
-            "anthropic_api_key": "k", "max_tokens": 100,
+            "default_model": "m1",
+            "llm_api_key": "k", "llm_base_url": "http://x",
+            "max_tokens": 100,
             "agent_max_iterations": 3,
         })())
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         unbound = mock_cls.return_value
         bound = unbound.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(return_value=_ai_message(
@@ -308,11 +312,12 @@ class TestAskToolLoop:
         """Финальный fallback-вызов получает на вход messages со всеми ToolMessage из предыдущих итераций."""
         from langchain_core.messages import ToolMessage
         monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
-            "premium_model": "m1", "default_model": "m1",
-            "anthropic_api_key": "k", "max_tokens": 100,
+            "default_model": "m1",
+            "llm_api_key": "k", "llm_base_url": "http://x",
+            "max_tokens": 100,
             "agent_max_iterations": 2,
         })())
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         unbound = mock_cls.return_value
         bound = unbound.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(return_value=_ai_message(
@@ -335,7 +340,7 @@ class TestAskToolLoop:
     async def test_permission_requester_gets_user_friendly_description(self, mocker, history):
         """В permission_requester передаётся русское описание из AgentMessages.tool_descriptions_for_user."""
         from src.config import AgentMessages
-        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         bound = mock_cls.return_value.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(side_effect=[
             _ai_message(tool_calls=[{"name": "search_web", "args": {}, "id": "t1"}]),

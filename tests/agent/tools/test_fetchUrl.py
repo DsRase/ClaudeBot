@@ -29,7 +29,7 @@ class TestFetchUrl:
     async def test_returns_extracted_text(self, mocker, monkeypatch):
         """Текст из HTML отдаётся очищенным от тэгов."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch(
             "httpx.AsyncClient.get",
             new=mocker.AsyncMock(return_value=_mock_response("<p>hello</p>")),
@@ -43,7 +43,7 @@ class TestFetchUrl:
     async def test_truncates_to_settings_limit(self, mocker, monkeypatch):
         """Длинный текст обрезается до Settings.fetch_max_content_chars символов."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         from src.config import get_settings
         get_settings.cache_clear()
         limit = get_settings().fetch_max_content_chars
@@ -61,7 +61,7 @@ class TestFetchUrl:
     async def test_raises_on_http_error(self, mocker, monkeypatch):
         """HTTP-ошибки пробрасываются (raise_for_status)."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch(
             "httpx.AsyncClient.get",
             new=mocker.AsyncMock(return_value=_mock_response("nope", status_code=500)),

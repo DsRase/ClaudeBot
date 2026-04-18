@@ -10,7 +10,7 @@ class TestSearchWeb:
     async def test_returns_normalized_results(self, mocker, monkeypatch):
         """Поля DDGS (title/href/body) переименовываются в title/url/snippet."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         ddgs_instance = mocker.MagicMock()
         ddgs_instance.text.return_value = [
             {"title": "T1", "href": "http://a", "body": "S1"},
@@ -29,7 +29,7 @@ class TestSearchWeb:
     async def test_uses_settings_default_when_max_results_none(self, mocker, monkeypatch):
         """Если max_results не задан, берётся дефолт из Settings."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         ddgs_instance = mocker.MagicMock()
         ddgs_instance.text.return_value = []
         mocker.patch("src.agent.tools.search.searchWeb.DDGS", return_value=ddgs_instance)
@@ -46,7 +46,7 @@ class TestSearchWeb:
     async def test_runs_in_thread(self, mocker, monkeypatch):
         """Sync DDGS должен прогоняться через asyncio.to_thread, а не блокировать loop."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         mocker.patch("src.agent.tools.search.searchWeb.DDGS").return_value.text.return_value = []
         spy = mocker.patch("src.agent.tools.search.searchWeb.asyncio.to_thread", new=mocker.AsyncMock(return_value=[]))
 
@@ -58,7 +58,7 @@ class TestSearchWeb:
     async def test_missing_keys_default_to_empty(self, mocker, monkeypatch):
         """Если в результате DDGS нет какого-то поля — оно становится пустой строкой."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         ddgs_instance = mocker.MagicMock()
         ddgs_instance.text.return_value = [{"title": "T1"}]
         mocker.patch("src.agent.tools.search.searchWeb.DDGS", return_value=ddgs_instance)

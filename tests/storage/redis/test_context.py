@@ -19,7 +19,7 @@ class TestContextRepository:
     async def test_add_message_calls_rpush_and_ltrim(self, mocker, monkeypatch, message):
         """Проверяет, что add_message записывает сообщение и обрезает список до лимита."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         mock_redis = mocker.AsyncMock()
         mocker.patch("src.storage.redis.context.get_redis", return_value=mock_redis)
@@ -37,7 +37,7 @@ class TestContextRepository:
     async def test_get_context_returns_messages(self, mocker, monkeypatch, message):
         """Проверяет, что get_context возвращает десериализованный список сообщений."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         mock_redis = mocker.AsyncMock()
         mock_redis.lrange.return_value = [json.dumps(message.model_dump(mode="python"), ensure_ascii=False)]
@@ -55,7 +55,7 @@ class TestContextRepository:
     async def test_get_context_custom_limit(self, mocker, monkeypatch):
         """Проверяет, что get_context использует переданный limit вместо дефолтного."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
 
         mock_redis = mocker.AsyncMock()
         mock_redis.lrange.return_value = []

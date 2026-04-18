@@ -8,7 +8,7 @@ class TestGetRedis:
         """Проверяет, что get_redis возвращает объект клиента."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
 
         get_redis.cache_clear()
@@ -19,7 +19,7 @@ class TestGetRedis:
         """Проверяет, что повторный вызов get_redis возвращает тот же объект."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+        monkeypatch.setenv("LLM_API_KEY", "k")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
 
         get_redis.cache_clear()

@@ -2,8 +2,8 @@ import json
 import re
 from typing import Awaitable, Callable
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_openai import ChatOpenAI
 
 from src.agent.langTools import ALL_TOOLS
 from src.config import AgentMessages, get_settings
@@ -35,7 +35,7 @@ def _render_history(history: list[ChatMessage]) -> str:
 
 
 def _extract_text(content) -> str:
-    """Достаёт текст из ответа модели — поддерживает строку и список content-блоков Anthropic."""
+    """Достаёт текст из ответа модели — поддерживает строку и список content-блоков."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -78,18 +78,18 @@ async def _execute_tool_call(
 
 async def ask(
     history: list[ChatMessage],
-    is_premium: bool = False,
     permission_requester: PermissionRequester | None = None,
     extra_tools: list | None = None,
 ) -> str:
     """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ."""
     settings = get_settings()
-    model = settings.premium_model if is_premium else settings.default_model
+    model = settings.default_model
     logger.debug(f"Запрос к модели {model}, сообщений в контексте: {len(history)}")
 
-    llm = ChatAnthropic(
+    llm = ChatOpenAI(
         model=model,
-        anthropic_api_key=settings.anthropic_api_key,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
         timeout=120,
         max_tokens=settings.max_tokens,
     )
