@@ -56,15 +56,3 @@ async def on_permission_click(callback: CallbackQuery):
         reply_markup=None,
     )
     await callback.answer()
-
-
-@router.message(Command("reset_perms"))
-async def on_reset_perms(message: Message):
-    """Сбрасывает все session-разрешения у пользователя, выполнившего команду."""
-    if message.from_user is None:
-        return
-    cleared = reset_session_permissions(message.from_user.id)
-    if cleared:
-        await message.reply(f"Сброшено разрешений: {cleared}")
-    else:
-        await message.reply("Разрешений на сессию у тебя и не было.")

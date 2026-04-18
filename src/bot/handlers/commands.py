@@ -2,6 +2,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from src.bot.permissions import reset_session_permissions
 from src.config import BotMessages
 
 from src.utils.logger import LoggerFactory
@@ -27,3 +28,14 @@ async def getid_command(message: Message):
     """Возвращает ID юзера"""
     logger.debug(f"chat_id: {message.chat.id}. user_id: {message.from_user.id}. Прожал /getid")
     await message.answer(f"Твой ID: {message.from_user.id}")
+
+@router.message(Command("reset_perms"))
+async def on_reset_perms(message: Message):
+    """Сбрасывает все session-разрешения у пользователя, выполнившего команду."""
+    if message.from_user is None:
+        return
+    cleared = reset_session_permissions(message.from_user.id)
+    if cleared:
+        await message.reply(f"Сброшено разрешений: {cleared}")
+    else:
+        await message.reply("Разрешений на сессию у тебя и не было.")
