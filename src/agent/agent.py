@@ -108,8 +108,7 @@ async def ask(
         timeout=120,
         max_tokens=settings.max_tokens,
     )
-    if permission_requester is not None:
-        llm = llm.bind_tools(ALL_TOOLS)
+    llm_with_tools = llm.bind_tools(ALL_TOOLS) if permission_requester is not None else llm
 
     messages = [
         SystemMessage(content=AgentMessages.system_prompt),
@@ -118,7 +117,7 @@ async def ask(
 
     response = None
     for iteration in range(settings.agent_max_iterations):
-        response = await llm.ainvoke(messages)
+        response = await llm_with_tools.ainvoke(messages)
 
         tool_calls = getattr(response, "tool_calls", None) or []
         if not tool_calls or permission_requester is None:
@@ -132,7 +131,11 @@ async def ask(
             tool_msg = await _execute_tool_call(call, permission_requester)
             messages.append(tool_msg)
     else:
-        logger.warning(f"agent: достигнут cap итераций ({settings.agent_max_iterations})")
+        logger.warning(
+            f"agent: достигнут cap итераций ({settings.agent_max_iterations}), "
+            f"делаем финальный вызов без тул для текстового ответа"
+        )
+        response = await llm.ainvoke(messages)
 
     content = _extract_text(response.content if response else "")
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()

@@ -259,19 +259,21 @@ class TestAskToolLoop:
             "bind_tools не должен вызываться без permission_requester"
 
     @pytest.mark.asyncio
-    async def test_iteration_cap_respected(self, mocker, history, monkeypatch):
-        """Если модель бесконечно зовёт тулы — выходим по cap'у и возвращаем последний content."""
+    async def test_iteration_cap_triggers_final_unbound_call(self, mocker, history, monkeypatch):
+        """При cap'е делаем добавочный вызов LLM без тул, чтобы получить текстовый итог."""
         monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
             "premium_model": "m1", "default_model": "m1",
             "anthropic_api_key": "k", "max_tokens": 100,
             "agent_max_iterations": 3,
         })())
         mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
-        bound = mock_cls.return_value.bind_tools.return_value
+        unbound = mock_cls.return_value
+        bound = unbound.bind_tools.return_value
         bound.ainvoke = mocker.AsyncMock(return_value=_ai_message(
             content="пытаюсь",
             tool_calls=[{"name": "search_web", "args": {}, "id": "t"}],
         ))
+        unbound.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="итог по найденному"))
         permission_requester = mocker.AsyncMock(return_value=True)
         tool = mocker.MagicMock()
         tool.ainvoke = mocker.AsyncMock(return_value="x")
@@ -279,8 +281,37 @@ class TestAskToolLoop:
 
         result = await ask(history, permission_requester=permission_requester)
 
-        assert bound.ainvoke.await_count == 3, "должно быть ровно agent_max_iterations вызовов LLM"
-        assert result == "пытаюсь", "при cap'е возвращается контент последней итерации"
+        assert bound.ainvoke.await_count == 3, "должно быть ровно agent_max_iterations вызовов LLM с тулами"
+        unbound.ainvoke.assert_awaited_once(), "после cap'а нужен финальный вызов БЕЗ тул"
+        assert result == "итог по найденному", "при cap'е возвращается текст из финального вызова без тул"
+
+    @pytest.mark.asyncio
+    async def test_cap_final_call_sees_tool_results(self, mocker, history, monkeypatch):
+        """Финальный fallback-вызов получает на вход messages со всеми ToolMessage из предыдущих итераций."""
+        from langchain_core.messages import ToolMessage
+        monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
+            "premium_model": "m1", "default_model": "m1",
+            "anthropic_api_key": "k", "max_tokens": 100,
+            "agent_max_iterations": 2,
+        })())
+        mock_cls = mocker.patch("src.agent.agent.ChatAnthropic")
+        unbound = mock_cls.return_value
+        bound = unbound.bind_tools.return_value
+        bound.ainvoke = mocker.AsyncMock(return_value=_ai_message(
+            tool_calls=[{"name": "search_web", "args": {}, "id": "t"}],
+        ))
+        unbound.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="ну вот"))
+        permission_requester = mocker.AsyncMock(return_value=True)
+        tool = mocker.MagicMock()
+        tool.ainvoke = mocker.AsyncMock(return_value="результат поиска")
+        mocker.patch.dict("src.agent.agent._TOOLS_BY_NAME", {"search_web": tool}, clear=False)
+
+        await ask(history, permission_requester=permission_requester)
+
+        final_messages = unbound.ainvoke.await_args.args[0]
+        tool_results = [m for m in final_messages if isinstance(m, ToolMessage)]
+        assert len(tool_results) == 2, \
+            f"финальный вызов должен видеть оба ToolMessage из 2 итераций, увидел: {len(tool_results)}"
 
     @pytest.mark.asyncio
     async def test_permission_requester_gets_user_friendly_description(self, mocker, history):
