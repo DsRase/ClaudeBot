@@ -184,6 +184,28 @@ class TestChatHandler:
             f"reply_id не сохранился, получено: {saved_user_msg.reply_id!r}"
 
     @pytest.mark.asyncio
+    async def test_ask_failure_sends_error_and_deletes_think_msg(self, mocker, message, bot, history):
+        """Если ask падает — юзеру летит сообщение из LLM_ERROR, а думалка удаляется."""
+        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
+            access_user_ids=[111],
+        )
+        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
+        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
+        mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(side_effect=RuntimeError("upstream 421")))
+
+        think_msg = mocker.MagicMock()
+        think_msg.message_id = 777
+        think_msg.delete = mocker.AsyncMock()
+        message.answer = mocker.AsyncMock(return_value=think_msg)
+
+        await chat(message, bot)
+
+        think_msg.delete.assert_awaited_once(), "думалка должна быть удалена даже при ошибке ask"
+        sent_texts = [c.args[0] for c in message.answer.await_args_list if c.args]
+        assert any(t in BotMessages.LLM_ERROR for t in sent_texts), \
+            f"юзеру не отправлен текст из LLM_ERROR, отправлено: {sent_texts}"
+
+    @pytest.mark.asyncio
     async def test_group_reply_to_bot_triggers_reply(self, mocker, message, bot, history):
         """Проверяет, что ответ на сообщение бота в группе приводит к срабатыванию хендлера."""
         message.chat.type = "group"

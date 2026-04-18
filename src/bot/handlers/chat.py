@@ -95,28 +95,34 @@ async def chat(message: Message, bot: Bot):
             reply_to_message_id=None if is_private else message.message_id,
         )
 
-    answer = await ask(
-        history,
-        permission_requester=permission_requester,
-        extra_tools=make_chat_scoped_tools(chat_id),
-    )
-
-    text, entities = telegramify_markdown.convert(answer)
-    entities = [MessageEntity(**entity.to_dict()) for entity in entities]
-    chunk_size = 4096  # ограничение телеграма на длину сообщения
-    chunks = split_text_with_entities(text, entities, chunk_size)
-
     first_sent = None
     try:
-        for i, (chunk_text, chunk_entities) in enumerate(chunks):
-            # Реплаем отправляем только первый чанк, остальные — обычными сообщениями
-            send = respond if i == 0 else message.answer
-            sent = await send(chunk_text, entities=chunk_entities)
-            if i == 0:
-                first_sent = sent
-    except Exception:
-        logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
-        raise
+        try:
+            answer = await ask(
+                history,
+                permission_requester=permission_requester,
+                extra_tools=make_chat_scoped_tools(chat_id),
+            )
+        except Exception:
+            logger.exception(f"user_id={user_id}, chat_id={chat_id}: ask упал")
+            await respond(get_random_message(BotMessages.LLM_ERROR))
+            return
+
+        text, entities = telegramify_markdown.convert(answer)
+        entities = [MessageEntity(**entity.to_dict()) for entity in entities]
+        chunk_size = 4096  # ограничение телеграма на длину сообщения
+        chunks = split_text_with_entities(text, entities, chunk_size)
+
+        try:
+            for i, (chunk_text, chunk_entities) in enumerate(chunks):
+                # Реплаем отправляем только первый чанк, остальные — обычными сообщениями
+                send = respond if i == 0 else message.answer
+                sent = await send(chunk_text, entities=chunk_entities)
+                if i == 0:
+                    first_sent = sent
+        except Exception:
+            logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
+            raise
     finally:
         try:
             await think_msg.delete()
