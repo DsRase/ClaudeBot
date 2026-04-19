@@ -75,7 +75,7 @@ async def change_model_callback(callback: CallbackQuery):
     await callback.message.edit_text(f"Теперь выбранная модель: {model}", reply_markup=None)
 
 @router.callback_query(F.data.startswith("back"))
-async def change_model_callback(callback: CallbackQuery):
+async def cancel_model_callback(callback: CallbackQuery):
     try:
         await callback.message.delete()
     except Exception as e:
