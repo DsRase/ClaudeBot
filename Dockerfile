@@ -16,6 +16,10 @@ COPY --from=builder /app/.venv ./.venv
 
 COPY src/ ./src/
 
+COPY migrations/ ./migrations/
+
+COPY alembic.ini ./
+
 COPY main.py ./
 
 RUN useradd -r -s /bin/false appuser && chown -R appuser /app
