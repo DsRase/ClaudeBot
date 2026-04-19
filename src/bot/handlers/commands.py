@@ -1,10 +1,13 @@
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 from src.bot.permissions import admin_required, reset_session_permissions
+from src.bot.markups import build_models_keyboard
 from src.config import BotMessages
 from src.config.settings import reload_settings
+
+from src.storage.sqlite import get_user_model, set_user_model
 
 from src.utils.logger import LoggerFactory
 from src.utils.messager import get_random_message
@@ -38,6 +41,38 @@ async def update_conf_command(message: Message):
     logger.info(f"user_id={message.from_user.id}: конфиг перезагружен")
     await message.answer(f"Конфиг обновлён. Дефолтная модель: {settings.default_model}, доступных юзеров: {len(settings.access_user_ids)}")
 
+@router.message(Command("change_model"))
+async def change_model(message: Message):
+    """Меняет модель для использования для конкретного пользователя"""
+    user_id = message.from_user.id
+    logger.debug(f"chat_id: {message.chat.id}. user_id: {user_id}. Прожал /change_model")
+
+    user_model = await get_user_model(user_id)
+    await message.answer(f"Выбранная модель: {user_model}\n\n"
+                         f"Чтобы сменить её, нажми на одну из доступных кнопок ниже."
+                         f"\nДля отмены есть отдельная кнопка",
+                         reply_markup=build_models_keyboard(user_id))
+
+@router.callback_query(F.data.startswith("model:"))
+async def change_model_callback(callback: CallbackQuery):
+    """Изменяет модель пользователя на ту, что он выбрал"""
+    _, init_user_id, model = callback.data.split(":", 2) # инициатор
+    click_user_id = callback.from_user.id
+
+    logger.debug(f"chat_id: {callback.message.chat.id}. user_id: {click_user_id}. Прожал нажал на кнопку для смены модели.")
+
+    if int(init_user_id) != click_user_id:
+        logger.debug(
+            f"chat_id: {callback.message.chat.id}. user_id: {click_user_id}. Не инициатор, реджектим.")
+        await callback.answer(f"Не тебе это решать)", show_alert=True)
+        return
+
+    await set_user_model(int(init_user_id), model)
+
+    logger.debug(
+        f"chat_id: {callback.message.chat.id}. user_id: {click_user_id}. Модель успешно сменена на: {model}")
+
+    await callback.message.edit_text(f"Теперь выбранная модель: {model}", reply_markup=None)
 
 @router.message(Command("reset_perms"))
 async def on_reset_perms(message: Message):

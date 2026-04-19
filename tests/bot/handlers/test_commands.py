@@ -126,3 +126,4 @@ class TestResetPerms:
         await on_reset_perms(msg)
 
         msg.reply.assert_awaited_once()
+
