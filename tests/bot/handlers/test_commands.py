@@ -1,7 +1,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from aiogram.types import Message, Chat, User
-from src.bot.handlers.commands import start_command, help_command, getid_command, on_reset_perms, update_conf_command
+from src.bot.handlers.commands import (
+    start_command, help_command, getid_command, on_reset_perms,
+    update_conf_command, change_model, change_model_callback, cancel_model_callback,
+)
 from src.bot.permissions.state import get_permission_state
 from src.config import BotMessages
 
@@ -126,4 +129,86 @@ class TestResetPerms:
         await on_reset_perms(msg)
 
         msg.reply.assert_awaited_once()
+
+
+class TestChangeModel:
+    """Сценарии команды /change_model и её коллбэков."""
+
+    @pytest.mark.asyncio
+    async def test_shows_current_model_and_keyboard(self, mocker):
+        """Команда отвечает текущей моделью пользователя и клавиатурой."""
+        mocker.patch(
+            "src.bot.handlers.commands.get_user_model",
+            return_value="claude-opus-4.6",
+        )
+        mock_keyboard = mocker.MagicMock()
+        mocker.patch(
+            "src.bot.handlers.commands.build_models_keyboard",
+            return_value=mock_keyboard,
+        )
+
+        msg = mocker.MagicMock()
+        msg.from_user.id = 111
+        msg.answer = mocker.AsyncMock()
+
+        await change_model(msg)
+
+        reply_text = msg.answer.await_args.args[0]
+        assert "claude-opus-4.6" in reply_text, f"текущая модель не в ответе: {reply_text!r}"
+        msg.answer.assert_awaited_once_with(reply_text, reply_markup=mock_keyboard)
+
+    @pytest.mark.asyncio
+    async def test_callback_changes_model_for_initiator(self, mocker):
+        """Инициатор нажимает кнопку — модель меняется, сообщение редактируется."""
+        mock_set = mocker.patch("src.bot.handlers.commands.set_user_model")
+
+        cb = mocker.MagicMock()
+        cb.data = "model:111:claude-sonnet-4.6"
+        cb.from_user.id = 111
+        cb.message.edit_text = mocker.AsyncMock()
+        cb.answer = mocker.AsyncMock()
+
+        await change_model_callback(cb)
+
+        mock_set.assert_awaited_once_with(111, "claude-sonnet-4.6")
+        edited_text = cb.message.edit_text.await_args.args[0]
+        assert "claude-sonnet-4.6" in edited_text, f"новая модель не в ответе: {edited_text!r}"
+
+    @pytest.mark.asyncio
+    async def test_callback_rejects_non_initiator(self, mocker):
+        """Чужой юзер нажимает кнопку — set_user_model не вызывается, alert отправляется."""
+        mock_set = mocker.patch("src.bot.handlers.commands.set_user_model")
+
+        cb = mocker.MagicMock()
+        cb.data = "model:111:claude-sonnet-4.6"
+        cb.from_user.id = 999  # не инициатор
+        cb.answer = mocker.AsyncMock()
+
+        await change_model_callback(cb)
+
+        mock_set.assert_not_called()
+        cb.answer.assert_awaited_once()
+        _, kwargs = cb.answer.await_args
+        assert kwargs.get("show_alert") is True, "alert должен быть показан"
+
+    @pytest.mark.asyncio
+    async def test_cancel_deletes_message(self, mocker):
+        """Кнопка отмены удаляет сообщение."""
+        cb = mocker.MagicMock()
+        cb.message.delete = mocker.AsyncMock()
+
+        await cancel_model_callback(cb)
+
+        cb.message.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_answers_on_delete_failure(self, mocker):
+        """Если удалить не вышло — бот отвечает сообщением об ошибке и не падает."""
+        cb = mocker.MagicMock()
+        cb.message.delete = mocker.AsyncMock(side_effect=Exception("forbidden"))
+        cb.message.answer = mocker.AsyncMock()
+
+        await cancel_model_callback(cb)
+
+        cb.message.answer.assert_awaited_once()
 
