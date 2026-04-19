@@ -74,6 +74,14 @@ async def change_model_callback(callback: CallbackQuery):
 
     await callback.message.edit_text(f"Теперь выбранная модель: {model}", reply_markup=None)
 
+@router.callback_query(F.data.startswith("back"))
+async def change_model_callback(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logger.error(e)
+        await callback.message.answer("Короче, какая-то бага случилась, удалить сообщение не вышло...\nНо ты не парься, я всё отменил)")
+
 @router.message(Command("reset_perms"))
 async def on_reset_perms(message: Message):
     """Сбрасывает все session-разрешения у пользователя, выполнившего команду."""
