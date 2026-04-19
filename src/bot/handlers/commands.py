@@ -2,8 +2,9 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from src.bot.permissions import reset_session_permissions
+from src.bot.permissions import admin_required, reset_session_permissions
 from src.config import BotMessages
+from src.config.settings import reload_settings
 
 from src.utils.logger import LoggerFactory
 from src.utils.messager import get_random_message
@@ -28,6 +29,15 @@ async def getid_command(message: Message):
     """Возвращает ID юзера"""
     logger.debug(f"chat_id: {message.chat.id}. user_id: {message.from_user.id}. Прожал /getid")
     await message.answer(f"Твой ID: {message.from_user.id}")
+
+@router.message(Command("update_conf"))
+@admin_required
+async def update_conf_command(message: Message):
+    """Перечитывает config.yaml и сбрасывает кэш настроек."""
+    settings = reload_settings()
+    logger.info(f"user_id={message.from_user.id}: конфиг перезагружен")
+    await message.answer(f"Конфиг обновлён. Дефолтная модель: {settings.default_model}, доступных юзеров: {len(settings.access_user_ids)}")
+
 
 @router.message(Command("reset_perms"))
 async def on_reset_perms(message: Message):

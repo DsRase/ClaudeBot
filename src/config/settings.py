@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     # Доступ
     access_user_ids: list[int] = []
+    admin_user_ids: list[int] = []
 
     # LLM
     default_model: str = "claude-opus-4.6"

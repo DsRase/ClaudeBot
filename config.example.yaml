@@ -1,4 +1,5 @@
 access_user_ids: []
+admin_user_ids: []
 
 default_model: claude-opus-4.6
 
