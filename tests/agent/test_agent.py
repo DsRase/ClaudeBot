@@ -5,6 +5,9 @@ from src.config.settings import Settings
 from src.storage.schemas import ChatMessage
 
 
+MODEL = "claude-opus-4.6"
+
+
 @pytest.fixture
 def history():
     return [
@@ -24,25 +27,24 @@ class TestAsk:
         mock_llm = mocker.patch("src.agent.agent.ChatOpenAI").return_value
         mock_llm.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="ответ"))
 
-        result = await ask(history)
+        result = await ask(history, model=MODEL)
 
         mock_llm.ainvoke.assert_awaited_once(), "ainvoke должен быть вызван ровно один раз"
         assert result == "ответ", "ask вернул не тот content, что ожидался"
 
     @pytest.mark.asyncio
-    async def test_uses_default_model(self, mocker, monkeypatch, history):
-        """Проверяет, что выбирается default_model из настроек."""
+    async def test_uses_provided_model(self, mocker, monkeypatch, history):
+        """Проверяет, что ask использует модель из аргумента, а не из настроек."""
         monkeypatch.setenv("TELEGRAM_TOKEN", "t")
         monkeypatch.setenv("LLM_API_KEY", "k")
 
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model="gpt-5.4")
 
         _, kwargs = mock_cls.call_args
-        assert kwargs["model"] == Settings.model_fields["default_model"].default, \
-            "выбрана не default_model из настроек"
+        assert kwargs["model"] == "gpt-5.4", "в ChatOpenAI попала не та модель, что передана в ask"
 
     @pytest.mark.asyncio
     async def test_passes_base_url_and_api_key(self, mocker, monkeypatch, history):
@@ -55,7 +57,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         _, kwargs = mock_cls.call_args
         assert kwargs["api_key"] == "secret", "api_key не пробросился из настроек"
@@ -75,7 +77,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
         assert '"from_username": "vasya"' in sent, f"from_username не в JSONL: {sent!r}"
@@ -96,7 +98,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
         assert '"to_username": "petya"' in sent, f"to_username не в JSONL: {sent!r}"
@@ -114,7 +116,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         sent = mock_cls.return_value.ainvoke.await_args[0][0][-1].content
         assert "999888" not in sent, f"user_id просочился в дамп для LLM: {sent!r}"
@@ -135,7 +137,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         sent = mock_cls.return_value.ainvoke.await_args[0][0]
         assert len(sent) == 2, f"в LLM ушло {len(sent)} сообщений, ожидалось ровно 2 (system + human)"
@@ -155,7 +157,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         content = mock_cls.return_value.ainvoke.await_args[0][0][1].content
         marker_pos = content.find("Message to reply to NOW")
@@ -179,7 +181,7 @@ class TestAsk:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=mocker.MagicMock(content="x"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         content = mock_cls.return_value.ainvoke.await_args[0][0][1].content
         assert '"role": "assistant"' in content, f"role ассистента не в дампе: {content!r}"
@@ -215,7 +217,7 @@ class TestAskToolLoop:
         tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value=[{"title": "T"}])
 
-        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
+        result = await ask(history, model=MODEL, permission_requester=permission_requester, extra_tools=[tool])
 
         assert result == "готово"
         permission_requester.assert_awaited_once()
@@ -237,7 +239,7 @@ class TestAskToolLoop:
         tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock()
 
-        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
+        result = await ask(history, model=MODEL, permission_requester=permission_requester, extra_tools=[tool])
 
         tool.ainvoke.assert_not_awaited(), "при отказе тула не должна вызываться"
         second_call_messages = bound.ainvoke.await_args_list[1].args[0]
@@ -261,7 +263,7 @@ class TestAskToolLoop:
         tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(side_effect=RuntimeError("bang"))
 
-        await ask(history, permission_requester=permission_requester, extra_tools=[tool])
+        await ask(history, model=MODEL, permission_requester=permission_requester, extra_tools=[tool])
 
         second_call_messages = bound.ainvoke.await_args_list[1].args[0]
         tool_msgs = [m for m in second_call_messages if isinstance(m, ToolMessage)]
@@ -274,7 +276,7 @@ class TestAskToolLoop:
         mock_cls = mocker.patch("src.agent.agent.ChatOpenAI")
         mock_cls.return_value.ainvoke = mocker.AsyncMock(return_value=_ai_message(content="ок"))
 
-        await ask(history)
+        await ask(history, model=MODEL)
 
         mock_cls.return_value.bind_tools.assert_not_called(), \
             "bind_tools не должен вызываться без permission_requester"
@@ -283,7 +285,6 @@ class TestAskToolLoop:
     async def test_iteration_cap_triggers_final_unbound_call(self, mocker, history, monkeypatch):
         """При cap'е делаем добавочный вызов LLM без тул, чтобы получить текстовый итог."""
         monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
-            "default_model": "m1",
             "llm_api_key": "k", "llm_base_url": "http://x",
             "max_tokens": 100,
             "fetch_user_agent": "ua",
@@ -302,7 +303,7 @@ class TestAskToolLoop:
         tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value="x")
 
-        result = await ask(history, permission_requester=permission_requester, extra_tools=[tool])
+        result = await ask(history, model=MODEL, permission_requester=permission_requester, extra_tools=[tool])
 
         assert bound.ainvoke.await_count == 3, "должно быть ровно agent_max_iterations вызовов LLM с тулами"
         unbound.ainvoke.assert_awaited_once(), "после cap'а нужен финальный вызов БЕЗ тул"
@@ -313,7 +314,6 @@ class TestAskToolLoop:
         """Финальный fallback-вызов получает на вход messages со всеми ToolMessage из предыдущих итераций."""
         from langchain_core.messages import ToolMessage
         monkeypatch.setattr("src.agent.agent.get_settings", lambda: type("S", (), {
-            "default_model": "m1",
             "llm_api_key": "k", "llm_base_url": "http://x",
             "max_tokens": 100,
             "fetch_user_agent": "ua",
@@ -331,7 +331,7 @@ class TestAskToolLoop:
         tool.name = "search_web"
         tool.ainvoke = mocker.AsyncMock(return_value="результат поиска")
 
-        await ask(history, permission_requester=permission_requester, extra_tools=[tool])
+        await ask(history, model=MODEL, permission_requester=permission_requester, extra_tools=[tool])
 
         final_messages = unbound.ainvoke.await_args.args[0]
         tool_results = [m for m in final_messages if isinstance(m, ToolMessage)]
@@ -350,7 +350,7 @@ class TestAskToolLoop:
         ])
         permission_requester = mocker.AsyncMock(return_value=False)
 
-        await ask(history, permission_requester=permission_requester)
+        await ask(history, model=MODEL, permission_requester=permission_requester)
 
         called_with_name, called_with_desc = permission_requester.await_args.args
         assert called_with_name == "search_web"

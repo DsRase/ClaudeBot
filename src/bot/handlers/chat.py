@@ -9,7 +9,7 @@ from src.agent.langTools import make_chat_scoped_tools
 from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
-from src.storage import ChatMessage, add_message, get_context
+from src.storage import ChatMessage, add_message, get_context, get_user_model
 from src.utils.logger.LoggerFactory import LoggerFactory
 from src.utils.messager import get_random_message, split_text_with_entities
 
@@ -82,6 +82,9 @@ async def chat(message: Message, bot: Bot):
     history = await get_context(chat_id)
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: получен контекст ({len(history)} сообщений)")
 
+    model = await get_user_model(user_id)
+    logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
+
     think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
 
     async def permission_requester(tool_name: str, tool_description: str) -> bool:
@@ -100,6 +103,7 @@ async def chat(message: Message, bot: Bot):
         try:
             answer = await ask(
                 history,
+                model=model,
                 permission_requester=permission_requester,
                 extra_tools=make_chat_scoped_tools(chat_id),
             )

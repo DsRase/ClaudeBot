@@ -21,6 +21,15 @@ def bot(mocker):
     return b
 
 
+@pytest.fixture(autouse=True)
+def _mock_user_model(mocker):
+    """По дефолту юзер не имеет персональной модели — get_user_model отдаёт дефолт."""
+    return mocker.patch(
+        "src.bot.handlers.chat.get_user_model",
+        new=mocker.AsyncMock(return_value="claude-opus-4.6"),
+    )
+
+
 @pytest.fixture
 def message(mocker):
     msg = mocker.MagicMock()
@@ -58,8 +67,12 @@ class TestChatHandler:
 
         await chat(message, bot)
 
-        mock_ask.assert_awaited_once_with(history, permission_requester=mocker.ANY, extra_tools=mocker.ANY), \
-            "ask должен вызываться с историей и permission_requester"
+        mock_ask.assert_awaited_once_with(
+            history,
+            model="claude-opus-4.6",
+            permission_requester=mocker.ANY,
+            extra_tools=mocker.ANY,
+        ), "ask должен вызываться с историей, моделью и permission_requester"
         message.answer.assert_any_await("ответ от LLM", entities=mocker.ANY), \
             "ответ модели не был отправлен пользователю в личке через answer"
 
@@ -96,6 +109,23 @@ class TestChatHandler:
         extra_tools = mock_ask.await_args.kwargs["extra_tools"]
         names = [t.name for t in extra_tools]
         assert "read_full_history" in names, f"read_full_history не попал в extra_tools: {names}"
+
+    @pytest.mark.asyncio
+    async def test_personal_user_model_passed_to_ask(self, mocker, message, bot, history, _mock_user_model):
+        """Если у юзера сохранена своя модель — она пробрасывается в ask вместо дефолта."""
+        _mock_user_model.return_value = "gpt-5.4"
+
+        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
+            access_user_ids=[111],
+        )
+        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
+        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
+        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ok"))
+
+        await chat(message, bot)
+
+        assert mock_ask.await_args.kwargs["model"] == "gpt-5.4", \
+            "модель юзера не пробросилась в ask"
 
     @pytest.mark.asyncio
     async def test_non_text_message_skipped(self, mocker, message, bot):

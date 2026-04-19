@@ -78,12 +78,12 @@ async def _execute_tool_call(
 
 async def ask(
     history: list[ChatMessage],
+    model: str,
     permission_requester: PermissionRequester | None = None,
     extra_tools: list | None = None,
 ) -> str:
     """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ."""
     settings = get_settings()
-    model = settings.default_model
     logger.debug(f"Запрос к модели {model}, сообщений в контексте: {len(history)}")
 
     llm = ChatOpenAI(

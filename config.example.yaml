@@ -1,0 +1,24 @@
+access_user_ids: []
+
+default_model: claude-opus-4.6
+
+available_models:
+  - claude-opus-4.6
+  - claude-sonnet-4.6
+  - gpt-5.4
+  - gpt-5.2
+  - gemini-3.1-pro-preview
+max_tokens: 1024
+
+sqlite_path: data/bot.db
+redis_url: redis://redis:6379
+context_max_stored: 500
+context_default_limit: 50
+
+permission_request_timeout: 120
+agent_max_iterations: 10
+search_default_max_results: 5
+
+fetch_max_content_chars: 10000
+fetch_request_timeout: 15
+fetch_user_agent: "Mozilla/5.0 (compatible; PipindrBot/1.0)"
