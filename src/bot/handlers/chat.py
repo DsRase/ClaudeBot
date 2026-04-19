@@ -5,11 +5,11 @@ from aiogram import Bot, Router
 from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
-from src.agent.langTools import make_chat_scoped_tools
+from src.agent.langTools import make_chat_scoped_tools, make_user_memory_tools
 from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
-from src.storage import ChatMessage, add_message, get_context, get_user_model
+from src.storage import ChatMessage, add_message, get_context, get_user_model, get_user_memory
 from src.utils.logger.LoggerFactory import LoggerFactory
 from src.utils.messager import get_random_message, split_text_with_entities
 
@@ -85,6 +85,9 @@ async def chat(message: Message, bot: Bot):
     model = await get_user_model(user_id)
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
 
+    memory = await get_user_memory(user_id)
+    logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
+
     think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
 
     async def permission_requester(tool_name: str, tool_description: str) -> bool:
@@ -106,6 +109,8 @@ async def chat(message: Message, bot: Bot):
                 model=model,
                 permission_requester=permission_requester,
                 extra_tools=make_chat_scoped_tools(chat_id),
+                silent_tools=make_user_memory_tools(user_id),
+                user_memory=memory,
             )
         except Exception:
             logger.exception(f"user_id={user_id}, chat_id={chat_id}: ask упал")

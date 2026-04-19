@@ -1,14 +1,20 @@
 import asyncio
+from alembic import command
+from alembic.config import Config
 from aiogram import Bot, Dispatcher
 from src.bot.router import include_routers
 from src.config.settings import get_settings
-from src.storage import init_db
+
+
+def run_migrations() -> None:
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
 
 
 async def main():
     settings = get_settings()
 
-    await init_db()
+    run_migrations()
 
     dp = Dispatcher()
     include_routers(dp)

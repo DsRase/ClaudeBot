@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 
 from src.agent.tools import fetch_url, read_full_history, search_web
+from src.agent.tools.memory import get_user_memory_fn, set_user_memory_fn, clear_user_memory_fn
 from src.config import AgentMessages
 
 
@@ -27,3 +28,21 @@ def make_chat_scoped_tools(chat_id: int) -> list:
         return await read_full_history(chat_id)
 
     return [read_full_history_tool]
+
+
+def make_user_memory_tools(user_id: int) -> list:
+    """Билдит тулы памяти для конкретного юзера (user_id захвачен в замыкание)."""
+
+    @tool("read_user_memory", description=AgentMessages.tool_descriptions_for_llm["read_user_memory"])
+    async def read_user_memory_tool() -> str:
+        return await get_user_memory_fn(user_id)
+
+    @tool("write_user_memory", description=AgentMessages.tool_descriptions_for_llm["write_user_memory"])
+    async def write_user_memory_tool(content: str) -> str:
+        return await set_user_memory_fn(user_id, content)
+
+    @tool("clear_user_memory", description=AgentMessages.tool_descriptions_for_llm["clear_user_memory"])
+    async def clear_user_memory_tool() -> str:
+        return await clear_user_memory_fn(user_id)
+
+    return [read_user_memory_tool, write_user_memory_tool, clear_user_memory_tool]

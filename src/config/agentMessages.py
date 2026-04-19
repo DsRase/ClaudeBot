@@ -31,6 +31,27 @@ class AgentMessages:
             "Calling this without explicit user intent wastes a lot of tokens. "
             "No arguments. Returns JSONL of messages, same schema as the normal context."
         ),
+        "read_user_memory": (
+            "Read the persistent memory stored about this specific user. "
+            "Use when the conversation requires personal context not present in recent history "
+            "(e.g. user's name, preferences, communication style, ongoing goals). "
+            "Do NOT call on every message — only when personal context is actually needed. "
+            "No arguments."
+        ),
+        "write_user_memory": (
+            "Save or update persistent facts about this user. "
+            "Use when you learn something durable: their name, a strong preference, "
+            "a communication style, a recurring topic, or an explicit 'remember that...' request. "
+            "Do NOT write trivial or one-off details. "
+            "IMPORTANT: if the resulting memory would exceed 500 characters, compress/summarize "
+            "the existing memory first to fit within 500 characters while keeping the most important facts. "
+            "Argument: `content` (string) — the full new memory text (replaces existing)."
+        ),
+        "clear_user_memory": (
+            "Wipe all persistent memory stored about this user. "
+            "Use ONLY when the user explicitly asks to forget everything about them. "
+            "No arguments."
+        ),
     }
 
     system_prompt = """

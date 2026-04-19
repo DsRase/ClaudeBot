@@ -30,6 +30,15 @@ def _mock_user_model(mocker):
     )
 
 
+@pytest.fixture(autouse=True)
+def _mock_user_memory(mocker):
+    """По дефолту память юзера пуста."""
+    return mocker.patch(
+        "src.bot.handlers.chat.get_user_memory",
+        new=mocker.AsyncMock(return_value=None),
+    )
+
+
 @pytest.fixture
 def message(mocker):
     msg = mocker.MagicMock()
@@ -72,6 +81,8 @@ class TestChatHandler:
             model="claude-opus-4.6",
             permission_requester=mocker.ANY,
             extra_tools=mocker.ANY,
+            silent_tools=mocker.ANY,
+            user_memory=None,
         ), "ask должен вызываться с историей, моделью и permission_requester"
         message.answer.assert_any_await("ответ от LLM", entities=mocker.ANY), \
             "ответ модели не был отправлен пользователю в личке через answer"

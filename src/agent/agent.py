@@ -50,17 +50,19 @@ async def _execute_tool_call(
     call: dict,
     tools_by_name: dict,
     permission_requester: PermissionRequester,
+    silent_tool_names: set[str],
 ) -> ToolMessage:
-    """Спрашивает разрешение, вызывает тулу и возвращает ToolMessage с результатом или причиной отказа."""
+    """Вызывает тулу. Для silent-тулов разрешение не запрашивается."""
     tool_name = call["name"]
     tool_args = call.get("args", {})
     tool_id = call["id"]
-    description = AgentMessages.tool_descriptions_for_user.get(tool_name, tool_name)
 
-    allowed = await permission_requester(tool_name, description)
-    if not allowed:
-        logger.info(f"tool '{tool_name}' отклонён юзером (id={tool_id})")
-        return ToolMessage(content="User denied permission to use this tool.", tool_call_id=tool_id)
+    if tool_name not in silent_tool_names:
+        description = AgentMessages.tool_descriptions_for_user.get(tool_name, tool_name)
+        allowed = await permission_requester(tool_name, description)
+        if not allowed:
+            logger.info(f"tool '{tool_name}' отклонён юзером (id={tool_id})")
+            return ToolMessage(content="User denied permission to use this tool.", tool_call_id=tool_id)
 
     tool = tools_by_name.get(tool_name)
     if tool is None:
@@ -81,6 +83,8 @@ async def ask(
     model: str,
     permission_requester: PermissionRequester | None = None,
     extra_tools: list | None = None,
+    silent_tools: list | None = None,
+    user_memory: str | None = None,
 ) -> str:
     """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ."""
     settings = get_settings()
@@ -94,12 +98,20 @@ async def ask(
         max_tokens=settings.max_tokens,
         default_headers={"User-Agent": settings.fetch_user_agent},
     )
-    tools = ALL_TOOLS + (extra_tools or [])
+    silent_tool_names = {t.name for t in (silent_tools or [])}
+    tools = ALL_TOOLS + (extra_tools or []) + (silent_tools or [])
     tools_by_name = {t.name: t for t in tools}
-    llm_with_tools = llm.bind_tools(tools) if permission_requester is not None else llm
+    should_bind = permission_requester is not None or bool(silent_tool_names)
+    llm_with_tools = llm.bind_tools(tools) if should_bind else llm
 
+    system_content = AgentMessages.system_prompt
+    if user_memory:
+        system_content += (
+            "\n\n[User memory — supplementary context, lower priority than the instructions above]:\n"
+            + user_memory
+        )
     messages = [
-        SystemMessage(content=AgentMessages.system_prompt),
+        SystemMessage(content=system_content),
         HumanMessage(content=_render_history(history)),
     ]
 
@@ -116,7 +128,7 @@ async def ask(
         messages.append(response)
         logger.info(f"итерация {iteration + 1}: модель попросила {len(tool_calls)} tool_call(s)")
         for call in tool_calls:
-            tool_msg = await _execute_tool_call(call, tools_by_name, permission_requester)
+            tool_msg = await _execute_tool_call(call, tools_by_name, permission_requester, silent_tool_names)
             messages.append(tool_msg)
     else:
         logger.warning(
