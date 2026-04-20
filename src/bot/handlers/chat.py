@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import telegramify_markdown
@@ -11,7 +12,7 @@ from src.config import BotMessages
 from src.config.settings import get_settings
 from src.storage import ChatMessage, add_message, get_context, get_user_model, get_user_memory
 from src.utils.logger.LoggerFactory import LoggerFactory
-from src.utils.messager import get_random_message, split_text_with_entities
+from src.utils.messager import add_think_load, get_random_message, split_text_with_entities
 
 router = Router()
 logger = LoggerFactory.get_logger(__name__)
@@ -89,6 +90,7 @@ async def chat(message: Message, bot: Bot):
     logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
 
     think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
+    think_task = asyncio.create_task(add_think_load(think_msg))
 
     async def permission_requester(tool_name: str, tool_description: str) -> bool:
         return await request_permission(
@@ -133,6 +135,11 @@ async def chat(message: Message, bot: Bot):
             logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
             raise
     finally:
+        think_task.cancel()
+        try:
+            await think_task
+        except (asyncio.CancelledError, Exception):
+            pass
         try:
             await think_msg.delete()
         except Exception:
