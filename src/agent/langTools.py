@@ -1,6 +1,7 @@
 from langchain_core.tools import tool
 
 from src.agent.tools import fetch_url, read_full_history, search_web
+from src.agent.tools.adaptive import choose_model
 from src.agent.tools.memory import get_user_memory_fn, set_user_memory_fn, clear_user_memory_fn
 from src.config import AgentMessages
 
@@ -15,6 +16,12 @@ async def search_web_tool(query: str, max_results: int | None = None) -> list[di
 async def fetch_url_tool(url: str) -> str:
     """LangChain-обёртка над fetch_url."""
     return await fetch_url(url)
+
+
+@tool("choose_model", description=AgentMessages.tool_descriptions_for_llm_selector["choose_model"])
+async def choose_model_tool(model: str) -> str:
+    """LangChain-обёртка для structured-output выбора модели."""
+    return await choose_model(model)
 
 
 ALL_TOOLS = [search_web_tool, fetch_url_tool]

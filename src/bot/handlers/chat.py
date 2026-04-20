@@ -7,6 +7,7 @@ from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
 from src.agent.langTools import make_chat_scoped_tools, make_user_memory_tools
+from src.agent.modelSelector import ADAPTIVE_MODEL_NAME, select_model
 from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
@@ -84,7 +85,12 @@ async def chat(message: Message, bot: Bot):
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: получен контекст ({len(history)} сообщений)")
 
     model = await get_user_model(user_id)
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
+    if model == ADAPTIVE_MODEL_NAME:
+        real_models = [m for m in get_settings().available_models if m != ADAPTIVE_MODEL_NAME]
+        model = await select_model(message.text, real_models)
+        logger.debug(f"user_id={user_id}, chat_id={chat_id}: adaptive выбрал модель {model}")
+    else:
+        logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
 
     memory = await get_user_memory(user_id)
     logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
