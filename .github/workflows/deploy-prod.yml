@@ -45,7 +45,7 @@ jobs:
           script: |
             cd /opt/claudebot
             export BOT_VERSION=${{ github.run_number }}
-            docker-compose pull
+            docker pull ${{ env.IMAGE }}:$BOT_VERSION
             docker-compose up -d --remove-orphans
             docker image prune -af
 
