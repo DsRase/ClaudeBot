@@ -1,4 +1,3 @@
-from logging.config import fileConfig
 from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
@@ -9,9 +8,6 @@ from src.config.settings import get_settings
 from src.storage.sqlite.models import Base
 
 config = context.config
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

@@ -1,15 +1,18 @@
 access_user_ids: []
 admin_user_ids: []
 
-default_model: claude-opus-4.6
+default_model: claude-opus-4.7
 
 available_models:
+  - claude-opus-4.7
   - claude-opus-4.6
   - claude-sonnet-4.6
+  - claude-sonnet-4.5
+  - claude-haiku-4.5
   - gpt-5.4
   - gpt-5.2
   - gemini-3.1-pro-preview
-max_tokens: 1024
+max_tokens: 8192
 
 sqlite_path: data/bot.db
 redis_url: redis://redis:6379
