@@ -84,6 +84,9 @@ async def chat(message: Message, bot: Bot):
     history = await get_context(chat_id)
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: получен контекст ({len(history)} сообщений)")
 
+    think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
+    think_task = asyncio.create_task(add_think_load(think_msg))
+
     model = await get_user_model(user_id)
     if model == ADAPTIVE_MODEL_NAME:
         real_models = [m for m in get_settings().available_models if m != ADAPTIVE_MODEL_NAME]
@@ -94,9 +97,6 @@ async def chat(message: Message, bot: Bot):
 
     memory = await get_user_memory(user_id)
     logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
-
-    think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
-    think_task = asyncio.create_task(add_think_load(think_msg))
 
     async def permission_requester(tool_name: str, tool_description: str) -> bool:
         return await request_permission(
