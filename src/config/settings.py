@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     admin_user_ids: list[int] = []
 
     # LLM
-    default_model: str = "claude-opus-4-7"
-    available_models: list[str] = ["claude-opus-4-7"]
-    adaptive_selector_model: str = "claude-opus-4-7"
+    default_model: str = "claude-opus-4.7"
+    available_models: list[str] = ["claude-opus-4.7"]
+    adaptive_selector_model: str = "claude-opus-4.7"
     max_tokens: int = 1024
 
     # Хранилище
