@@ -12,6 +12,7 @@ available_models:
   - gpt-5.4
   - gpt-5.2
   - gemini-3.1-pro-preview
+  - adaptive
 max_tokens: 8192
 
 sqlite_path: data/bot.db
