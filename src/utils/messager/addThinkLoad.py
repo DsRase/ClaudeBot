@@ -3,7 +3,7 @@ import asyncio
 from aiogram.types import Message
 
 
-async def add_think_load(message: Message, interval: float = 0.4) -> None:
+async def add_think_load(message: Message, interval: float = 0.3) -> None:
     """Анимирует индикатор загрузки в конце текста сообщения.
 
     Запускается как `asyncio.create_task(...)` и останавливается через `task.cancel()`.
@@ -14,7 +14,7 @@ async def add_think_load(message: Message, interval: float = 0.4) -> None:
     try:
         while True:
             try:
-                await message.edit_text(f"{base_text} {syms[i % len(syms)]}")
+                await message.edit_text(f"{syms[i % len(syms)]} {base_text}")
             except Exception:
                 return
             i += 1
