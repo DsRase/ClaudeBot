@@ -1,14 +1,21 @@
 import json
 import re
+import time
 from typing import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
+from openai import APIStatusError
 
 from src.agent.langTools import ALL_TOOLS
 from src.config import AgentMessages, get_settings
 from src.storage.schemas import ChatMessage
 from src.utils.logger.LoggerFactory import LoggerFactory
+from src.utils.metrics import (
+    llm_request_duration_seconds,
+    llm_requests_total,
+    llm_status_codes_total,
+)
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -78,6 +85,26 @@ async def _execute_tool_call(
     return ToolMessage(content=str(result), tool_call_id=tool_id)
 
 
+async def _invoke_llm(llm, messages, model: str):
+    """Вызов LLM с записью метрик (длительность, статус-коды)."""
+    start = time.monotonic()
+    try:
+        response = await llm.ainvoke(messages)
+        llm_requests_total.labels(model=model, status="success").inc()
+        llm_status_codes_total.labels(status_code="200", model=model).inc()
+        return response
+    except APIStatusError as e:
+        llm_requests_total.labels(model=model, status="error").inc()
+        llm_status_codes_total.labels(status_code=str(e.status_code), model=model).inc()
+        raise
+    except Exception:
+        llm_requests_total.labels(model=model, status="error").inc()
+        llm_status_codes_total.labels(status_code="unknown", model=model).inc()
+        raise
+    finally:
+        llm_request_duration_seconds.labels(model=model).observe(time.monotonic() - start)
+
+
 async def ask(
     history: list[ChatMessage],
     model: str,
@@ -117,7 +144,7 @@ async def ask(
 
     response = None
     for iteration in range(settings.agent_max_iterations):
-        response = await llm_with_tools.ainvoke(messages)
+        response = await _invoke_llm(llm_with_tools, messages, model)
 
         tool_calls = getattr(response, "tool_calls", None) or []
         if not tool_calls or permission_requester is None:
@@ -135,7 +162,7 @@ async def ask(
             f"agent: достигнут cap итераций ({settings.agent_max_iterations}), "
             f"делаем финальный вызов без тул для текстового ответа"
         )
-        response = await llm.ainvoke(messages)
+        response = await _invoke_llm(llm, messages, model)
 
     content = _extract_text(response.content if response else "")
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()

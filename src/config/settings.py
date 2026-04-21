@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     fetch_request_timeout: int = 15
     fetch_user_agent: str = "Mozilla/5.0 (compatible; PipindrBot/1.0)"
 
+    # Метрики
+    metrics_port: int = 9000
+
     model_config = SettingsConfigDict(
         env_file=".env",
         yaml_file=str(CONFIG_YAML),
