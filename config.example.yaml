@@ -1,7 +1,7 @@
 access_user_ids: []
 admin_user_ids: []
 
-default_model: claude-opus-4.7
+default_model: claude-sonnet-4.6
 
 available_models:
   - claude-opus-4.7
