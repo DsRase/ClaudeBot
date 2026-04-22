@@ -5,6 +5,7 @@ from src.config.settings import get_settings
 from src.storage.sqlite.engine import get_session
 from src.storage.sqlite.models import User
 from src.utils.logger.LoggerFactory import LoggerFactory
+from src.utils.metrics import db_queries_total
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -12,9 +13,14 @@ logger = LoggerFactory.get_logger(__name__)
 async def get_user_model(user_id: int) -> str:
     """Модель, выбранная юзером. Если записи нет — settings.default_model."""
     settings = get_settings()
-    async with get_session() as session:
-        result = await session.execute(select(User.model).where(User.user_id == user_id))
-        model = result.scalar_one_or_none()
+    try:
+        async with get_session() as session:
+            result = await session.execute(select(User.model).where(User.user_id == user_id))
+            model = result.scalar_one_or_none()
+        db_queries_total.labels(operation="get_user_model", status="success").inc()
+    except Exception:
+        db_queries_total.labels(operation="get_user_model", status="error").inc()
+        raise
     return model or settings.default_model
 
 
@@ -29,17 +35,28 @@ async def set_user_model(user_id: int, model: str) -> None:
         .values(user_id=user_id, model=model)
         .on_conflict_do_update(index_elements=[User.user_id], set_={"model": model})
     )
-    async with get_session() as session:
-        await session.execute(stmt)
-        await session.commit()
+    try:
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+        db_queries_total.labels(operation="set_user_model", status="success").inc()
+    except Exception:
+        db_queries_total.labels(operation="set_user_model", status="error").inc()
+        raise
     logger.debug(f"user_id={user_id}: модель установлена в {model}")
 
 
 async def get_user_memory(user_id: int) -> str | None:
     """Возвращает сохранённую память о юзере, или None если её нет."""
-    async with get_session() as session:
-        result = await session.execute(select(User.memory).where(User.user_id == user_id))
-        return result.scalar_one_or_none()
+    try:
+        async with get_session() as session:
+            result = await session.execute(select(User.memory).where(User.user_id == user_id))
+            value = result.scalar_one_or_none()
+        db_queries_total.labels(operation="get_user_memory", status="success").inc()
+        return value
+    except Exception:
+        db_queries_total.labels(operation="get_user_memory", status="error").inc()
+        raise
 
 
 async def set_user_memory(user_id: int, memory: str) -> None:
@@ -50,16 +67,26 @@ async def set_user_memory(user_id: int, memory: str) -> None:
         .values(user_id=user_id, model=settings.default_model, memory=memory)
         .on_conflict_do_update(index_elements=[User.user_id], set_={"memory": memory})
     )
-    async with get_session() as session:
-        await session.execute(stmt)
-        await session.commit()
+    try:
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+        db_queries_total.labels(operation="set_user_memory", status="success").inc()
+    except Exception:
+        db_queries_total.labels(operation="set_user_memory", status="error").inc()
+        raise
     logger.debug(f"user_id={user_id}: память обновлена ({len(memory)} символов)")
 
 
 async def clear_user_memory(user_id: int) -> None:
     """Очищает память о юзере (ставит NULL)."""
     stmt = update(User).where(User.user_id == user_id).values(memory=None)
-    async with get_session() as session:
-        await session.execute(stmt)
-        await session.commit()
+    try:
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+        db_queries_total.labels(operation="clear_user_memory", status="success").inc()
+    except Exception:
+        db_queries_total.labels(operation="clear_user_memory", status="error").inc()
+        raise
     logger.debug(f"user_id={user_id}: память очищена")

@@ -14,11 +14,40 @@ jobs:
     permissions:
       contents: write
       packages: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Lowercase image name
         run: echo "IMAGE=${IMAGE,,}" >> $GITHUB_ENV
+
+      - name: Resolve dev build number
+        id: resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -ge 3 ]; then
+            SOURCE_SHA="$(git rev-parse HEAD^2)"
+          else
+            SOURCE_SHA="$GITHUB_SHA"
+          fi
+          echo "Looking up successful CI run for $SOURCE_SHA"
+
+          DEV_RUN_NUMBER="$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=${SOURCE_SHA}&status=success&event=push" \
+            --jq '.workflow_runs[0].run_number')"
+
+          if [ -z "$DEV_RUN_NUMBER" ] || [ "$DEV_RUN_NUMBER" = "null" ]; then
+            echo "No successful CI run found for $SOURCE_SHA" >&2
+            exit 1
+          fi
+
+          echo "dev_build=$DEV_RUN_NUMBER" >> $GITHUB_OUTPUT
+          echo "prod_build=${{ github.run_number }}" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -30,10 +59,11 @@ jobs:
       - name: Install crane
         uses: imjasonh/setup-crane@v0.4
 
-      - name: Promote dev → latest + version
+      - name: Retag dev-N → prod-M
         run: |
-          crane copy ${{ env.IMAGE }}:dev ${{ env.IMAGE }}:latest
-          crane copy ${{ env.IMAGE }}:dev ${{ env.IMAGE }}:${{ github.run_number }}
+          crane copy \
+            ${{ env.IMAGE }}:dev-${{ steps.resolve.outputs.dev_build }} \
+            ${{ env.IMAGE }}:prod-${{ steps.resolve.outputs.prod_build }}
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
@@ -42,9 +72,11 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          envs: IMAGE_TAG
           script: |
+            mkdir -p /opt/claudebot
             cd /opt/claudebot
-            export BOT_VERSION=${{ github.run_number }}
+            export BOT_VERSION=prod-${{ steps.resolve.outputs.prod_build }}
             docker pull ${{ env.IMAGE }}:$BOT_VERSION
             docker-compose up -d --remove-orphans
             docker image prune -af
@@ -53,6 +85,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v${{ github.run_number }}" \
-            --title "Release v${{ github.run_number }}" \
-            --notes "Deployed image build #${{ github.run_number }}"
+          gh release create "v${{ steps.resolve.outputs.prod_build }}" \
+            --title "Release v${{ steps.resolve.outputs.prod_build }}" \
+            --notes "Deployed image \`prod-${{ steps.resolve.outputs.prod_build }}\` (retag of \`dev-${{ steps.resolve.outputs.dev_build }}\`)."

@@ -1,47 +1,313 @@
-# TG-CLAUDE-BOT
-**Суть проекта: соединить работу с Claude через Telegram-API**
-*Но зачем? Уже есть куча ботов которые ретранслируют твои сообщения в LLM?*
-**Здесь - полноценный агент. Возможность легко добавлять тулзы позволит сделать из него буквально аналог openclaw,
-только безопаснее, стабильнее и при работе напрямую с Claude**
+# ClaudeBot (Пипиндр)
 
-# Структура проекта
+Telegram-бот, который превращает любой OpenAI-совместимый LLM-бэкенд в полноценного агента с памятью, правами доступа и инструментами. Построен на **aiogram 3** + **LangChain** + **Redis** + **SQLite/Alembic**.
+
+> Несмотря на историческое название репозитория, бот работает **не только с Claude**. Провайдер переведён на OpenAI-совместимый контракт и дружит с любым шлюзом/агрегатором: Claude, GPT, Gemini, локальные модели через LiteLLM, OpenRouter и т.п.
+
+---
+
+## Зачем это нужно
+
+Обычный «ретранслятор сообщений в LLM» — скучно. Здесь:
+
+- **Полноценный агент** на LangChain с инструментами (`search`, `fetch`, и т.д.) и явным подтверждением на выполнение.
+- **Контекст чата и групп** хранится в Redis с лимитами и TTL.
+- **Долговременная память** по каждому пользователю в SQLite (через Alembic-миграции).
+- **Адаптивный выбор модели** — отдельный роутер выбирает модель под конкретный запрос.
+- **Права пользователя** — у каждого инструмента есть запрос разрешения через inline-кнопки.
+- **Админские команды, белый список, per-user конфиг** (модель, лимиты и т.п.).
+- **CI/CD** с релизами и ручным деплоем на VPS по SSH.
+
+---
+
+## Фичи
+
+### LLM и агент
+- OpenAI-совместимый провайдер (`base_url` + `api_key`) — подключается любой агрегатор.
+- Мульти-моделка: список `available_models` в конфиге, переключение на лету.
+- Режим `adaptive`: бот сам выбирает подходящую модель под задачу (есть отдельный `modelSelector`).
+- Фоновый «индикатор мышления» (`think_msg`) во время долгих ответов.
+- Ограничение итераций агента (`agent_max_iterations`) и `max_tokens` на ответ.
+- `try/except` вокруг `ask(...)` — ошибки LLM не валят бота.
+
+### Инструменты агента
+- `search` — поиск в интернете.
+- `fetch` — загрузка и парсинг конкретной страницы (с настраиваемым `user_agent` под WAF и лимитом по символам).
+- Просмотр текущего контекста Redis как инструмент (для отладки/саморефлексии).
+- Легко добавить свой тул — кладёшь модуль в `src/agent/tools/<name>/` и регистрируешь.
+
+### Хранилище
+- **Redis** — чат-контексты (история сообщений, метаданные, ограничения по длине/количеству).
+- **SQLite + Alembic** — долговременная память пользователей, их персональные настройки (выбранная модель, лимит контекста и т.п.). Миграции накатываются **автоматически при старте** (`main.py` → `run_migrations()`).
+
+### Безопасность и права
+- Белые списки: `access_user_ids` и `admin_user_ids` в конфиге.
+- Пермишены на использование инструментов: бот присылает inline-клавиатуру с «Разрешить / Запретить», таймаут через `permission_request_timeout`.
+- Админские команды для сброса пермишенов и управления доступом.
+
+### DevOps
+- Docker + docker-compose (бот + Redis).
+- Готовый образ в GitHub Container Registry.
+- GitHub Actions: **Test → Build → Deploy** (последний — ручной).
+- Отдельный DEV-стенд (отдельный compose/конфиг).
+- Отдельный monitoring-стек (Prometheus + Grafana + Loki + Promtail), общий для prod и dev.
+
+---
+
+## Быстрый старт
+
+### Требования
+- Docker + docker-compose **или** Python 3.12+ и Redis локально.
+- Telegram bot token (от `@BotFather`).
+- API-ключ любого OpenAI-совместимого LLM-шлюза.
+
+### 1. Клонируем
 ```bash
-├── resources # основные ресурсы (png, jpg и т. д.)
-│ └── bot # ресурсы бота
-│     └── img # картинки
-├── src # исходный код
-│ ├── agent # агент (LangChain)
-│ │ └── tools # тулы агента
-│ │     ├── fetch # просмотреть конкретную страницу
-│ │     └── search # загуглить инфу
-│ ├── bot # бот (aiogram)
-│ │ ├── handlers # хендлеры
-│ │ ├── markups # маркапы
-│ │ └── permissions # для выдачи разрешений от юзера LLM
-│ ├── config # конфиги и константы
-│ ├── storage # кеш
-│ │ ├── redis # редис
-│ │ └── schemas # DTOошки
-│ └── utils # доп. функции
-│     ├── logger # фабрика которая возвращает инстанс логгера
-│     └── messager # обработка сообщений
-└── tests # папка с тестами. Полностью повторяет исходный код, но в качестве модулей юнит-тесты (или тест-кейсы)
+git clone https://github.com/DsRase/ClaudeBot.git
+cd ClaudeBot
 ```
 
-# CI/CD
-**CI (Continuous Integration):**
-- *Test* - проходит по всем тестам в tests (юнит и интеграционные)
-- *Build* - собирает образ и кидает его в github реестр
+### 2. Конфиг окружения
 
-**CD (Continuous Delivery):**
-- *Deploy* - ручная джоба, которая подключается к серверу по SSH, пуллит образ с реестра предварительно очистив контекст, и запускает docker-compose. В джобу записывается номер сборки: это номер релиза для понятности релиз-менеджмента. *Важный момент:* на сервере должна быть директория /opt/claudebot/ с docker-compose.yml и .env файлом по примеру из репозитория.
+Создай `.env` по примеру:
 
-**Secrets:**
-- *SERVER_HOST* - ip или доменное имя вашего сервера
-- *SERVER_USER* - пользователь, к которому будет осуществлено подключение по ssh
-- *SSH_KEY* - вместо пароля используется *приватный* ssh-ключ
-- *SSH_PASSPHRASE* - для безопасности обязательно у приватного ключа должна быть пассфраза. Она записывается сюда же
+```dotenv
+TELEGRAM_TOKEN=123456:ABC...
+LLM_API_KEY=sk-...
+LLM_BASE_URL=https://api.your-llm-gateway.com/v1
+```
 
-# Тестирование
-*Все тесты находятся в директории `tests`. Директория должна быть полностью идентична `src` и 
-хранить в себе тесты для каждого отдельного модуля. Дополнительно для интеграционных тестов есть директория `integrate`.*
+### 3. Конфиг бота
+
+Скопируй `config.example.yaml` в `config.yaml` и правь под себя:
+```yaml
+access_user_ids: [123456789]          # кого пускать
+admin_user_ids:  [123456789]          # кто админ
+
+default_model: claude-opus-4.7
+available_models:
+  - claude-opus-4.7
+  - claude-sonnet-4.6
+  - gpt-5.4
+  - gemini-3.1-pro-preview
+  - adaptive                          # авто-выбор модели
+
+max_tokens: 8192
+sqlite_path: data/bot.db
+redis_url: redis://redis:6379
+
+context_max_stored: 500               # сколько сообщений хранить всего
+context_default_limit: 50             # сколько брать в промпт по умолчанию
+permission_request_timeout: 120
+agent_max_iterations: 10
+
+search_default_max_results: 5
+fetch_max_content_chars: 10000
+fetch_request_timeout: 15
+fetch_user_agent: "Mozilla/5.0 (compatible; PipindrBot/1.0)"
+```
+
+### 4. Запуск через docker-compose
+```bash
+docker compose up -d
+```
+
+Compose поднимет:
+
+⦁ `bot` — сам бот (образ `ghcr.io/dsrase/claudebot:${BOT_VERSION:-latest}`),
+⦁ `redis` — хранилище контекста.
+
+Каталог `./data` монтируется в контейнер — там живёт SQLite.
+
+### 5. Запуск локально (без Docker)
+
+```bash
+pip install uv
+uv sync
+# предполагается, что Redis уже запущен и его адрес указан в config.yaml
+python main.py
+```
+Миграции Alembic применятся автоматически при старте.
+
+---
+
+#### Команды бота
+
+
+| Команда        | Кто может | Что делает                                                         |
+|----------------|-----------|--------------------------------------------------------------------|
+| /start, /help  | все       | Приветствие и справка.                                             |
+| /change_model  | юзер      | Сменить модель (inline-клавиатура со списком из available_models). |
+| /reset_context | юзер      | Очистить контекст текущего чата в Redis.                           |
+| /memory        | юзер      | Просмотр/редактирование своей long-term памяти.                    |
+| /reset_perms   | юзер      | Сбросить выданные боту разрешения на инструменты.                  |
+| /back          | юзер      | Выйти из текущего инлайн-меню.                                     |
+| (админские)    | админ     | Управление доступом, сброс чужих пермишенов и т.п.                 |
+
+Список может пополняться — актуальный набор хендлеров см. в `src/bot/handlers/`.
+
+---
+
+#### Архитектура
+
+```text
+├── main.py                # входная точка: миграции + запуск поллинга
+├── alembic.ini            # конфиг миграций
+├── migrations/            # ревизии Alembic
+├── config.example.yaml    # пример конфига бота
+├── .env.example           # пример переменных окружения
+├── Dockerfile
+├── docker-compose.yml
+├── resources/bot/img/     # статические ассеты бота
+├── src/
+│   ├── agent/             # LangChain-агент
+│   │   ├── agent.py       # сборка промпта и вызов LLM
+│   │   ├── modelSelector/ # adaptive-роутер моделей
+│   │   └── tools/         # тулы агента
+│   │       ├── fetch/
+│   │       └── search/
+│   ├── bot/               # aiogram-слой
+│   │   ├── handlers/      # хендлеры команд и сообщений
+│   │   ├── markups/       # inline-клавиатуры
+│   │   ├── permissions/   # разрешения на использование тулов
+│   │   └── router.py      # include_routers
+│   ├── config/            # settings, загрузка yaml/env
+│   ├── storage/
+│   │   ├── redis/         # клиент и обёртки над Redis
+│   │   └── schemas/       # Pydantic DTO (ChatMessage и т.п.)
+│   └── utils/
+│       ├── logger/        # фабрика логгера (подавлен шум от Alembic)
+│       └── messager/      # форматирование/рендер сообщений
+└── tests/                 # зеркалит src/, + tests/integrate/
+```
+
+---
+
+#### Поток обработки сообщения
+
+1. aiogram-хендлер ловит сообщение в разрешённом чате.
+2. Сообщение нормализуется в `ChatMessage` и складывается в `Redis` (с лимитом `context_max_stored`).
+3. Выбирается модель:
+  ⦁ явно из `available_models` / персональных настроек пользователя,
+  ⦁ либо через `adaptive` → `modelSelector` решает за юзера.
+4. Отправляется `think_msg` («думаю…»).
+5. `LangChain`-агент формирует промпт из истории + системного промпта + user-memory, вызывает LLM через OpenAI-совместимый провайдер.
+6. Агент при необходимости дергает инструменты (`search`, `fetch`) — с запросом разрешения у юзера через inline-кнопки.
+7. Ответ возвращается, рендерится и отправляется в чат;
+8. `think_msg` удаляется
+
+---
+
+#### CI/CD
+
+**GitHub Actions:**
+
+- *Test* — прогон всех тестов из `tests/`.
+- *Build* — сборка Docker-образа и пуш в GitHub Container Registry (`ghcr.io/dsrase/claudebot`).
+- *Deploy* — ручная джоба. Ходит по SSH на VPS, очищает контекст, пуллит образ нужного тега, дергает docker compose up -d. Номер сборки = тег релиза — удобно для релиз-менеджмента.
+
+**Что должно быть на сервере**
+
+- Директория `/opt/claudebot/` с:
+  - `docker-compose.yml` (как в репе),
+  - `.env` (по `.env.example`),
+  - `config.yaml` (по `config.example.yaml`).
+- Права на запуск docker у SSH-пользователя.
+
+**Секреты репозитория**
+
+| Secret         | Назначение                                       |
+|----------------|--------------------------------------------------|
+| SERVER_HOST    | IP или домен VPS.                                |
+| SERVER_USER    | Пользователь для SSH.                            |
+| SSH_KEY        | Приватный SSH-ключ (используется вместо пароля). |
+| SSH_PASSPHRASE | Пассфраза к приватному ключу — обязательна.      |
+
+**DEV-стенд**
+
+В репо есть отдельный DEV-стенд (свой docker-compose/конфиг) — разворачивается отдельно от прода, удобно тестировать изменения перед релизом.
+
+**Monitoring-стенд (общий для prod и dev)**
+
+Сбор метрик и логов вынесен в отдельный compose-проект `monitoring/docker-compose.yml`:
+
+- *Сервисы*: `prometheus`, `grafana`, `loki`, `promtail`, `node_exporter`, `redis_exporter` (×2 — по одному на стенд).
+- *Сеть*: monitoring-стек подключается к default-сетям обоих стендов как **external** (`claudebot_default` и `claudebot-dev_default`). Благодаря этому Prometheus достаёт метрики напрямую с `bot-prod:9000` / `bot-dev:9000` и `redis-prod` / `redis-dev`, не публикуя порты на хост.
+- *Различие стендов*: в `docker-compose.yml` бота через переменную `STAND` (`prod` / `dev`) задаются `container_name` (`bot-prod` / `bot-dev`, `redis-prod` / `redis-dev`) и docker-label `stand=...`. В Prometheus это превращается в лейбл `stand`, в Loki — благодаря relabel в `promtail/config.yml`.
+- *Доступ к Grafana*: порт `3000:3000`, basic auth (`GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` в `monitoring/.env`).
+
+**Что должно быть на сервере**
+
+- `/opt/claudebot/` — prod-стенд, `.env` содержит `STAND=prod`.
+- `/opt/claudebot-dev/` — dev-стенд, `.env` содержит `STAND=dev`. Compose-проект должен называться `claudebot-dev` (т.е. директория `claudebot-dev` либо явный `-p claudebot-dev`), чтобы default-сеть звалась `claudebot-dev_default`.
+- `/opt/claudebot-monitoring/` — monitoring-стек: содержимое `monitoring/` из репы + `.env` (`GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`).
+
+**Порядок первого запуска monitoring**
+
+1. Поднять оба стенда (`claudebot` и `claudebot-dev`) — иначе их default-сетей ещё не существует и monitoring не стартует.
+2. `cd /opt/claudebot-monitoring && docker compose up -d`.
+3. Дальше деплой обновляется ручной джобой `Deploy Monitoring` (`workflow_dispatch`).
+
+**Workflows**
+
+| Workflow            | Триггер              | Что делает                                                                                              |
+|---------------------|----------------------|---------------------------------------------------------------------------------------------------------|
+| `ci.yml`            | push/PR в `develop`  | Тесты + сборка `:dev` образа.                                                                           |
+| `deploy-dev.yml`    | `workflow_dispatch`  | SSH в `/opt/claudebot-dev`, pull + up.                                                                  |
+| `deploy-prod.yml`   | push в `main`        | Промоут `:dev` → `:latest` + `:N`, SSH в `/opt/claudebot`, pull + up, GitHub Release.                   |
+| `deploy-monitoring` | `workflow_dispatch`  | SSH в `/opt/claudebot-monitoring`, pull + up. Запускается руками после правок в `monitoring/`.          |
+
+---
+
+#### Тестирование
+
+```bash
+uv run pytest
+```
+
+- `tests/` полностью зеркалит структуру `src/` — для каждого модуля свои юнит-тесты.
+
+Тесты гоняются в CI на каждый PR.
+
+---
+
+#### Миграции БД
+
+Используется `Alembic`. Текущая схема лежит в `migrations/versions/`.
+
+Локально:
+```bash
+uv run alembic upgrade head        # накатить
+uv run alembic revision -m "msg" --autogenerate   # создать новую
+uv run alembic downgrade -1        # откатить на шаг
+```
+
+В контейнере миграции применяются автоматически при старте (`main.py`).
+
+---
+
+#### Добавление нового инструмента агенту
+
+1. Создай каталог `src/agent/tools/<tool_name>/`.
+2. Опиши инструмент как `LangChain Tool` / `StructuredTool`, с понятным description (именно по нему модель решает, когда его вызывать).
+3. Зарегистрируй в сборке агента (`src/agent/agent.py`).
+4. Если инструмент делает что-то потенциально вредное (I/O, сеть, запись файлов) — обязательно заверни вызов через систему пермишенов из `src/bot/permissions/`.
+5. Напиши тесты в `tests/agent/tools/<tool_name>/`.
+
+---
+
+#### Roadmap / идеи
+
+- Мультимодальные сообщения (фото → vision-модель без OCR, аудио → Whisper STT + TTS-ответ).
+- Альбомы (`media_group`) как единое сообщение.
+- Переезд долговременной памяти с `SQLite` на `Postgres` для мульти-инстанс деплоя.
+- Развесистые per-user квоты (TPM/RPM/бюджет в токенах).
+- Больше тулов: код-раннер, погода, календарь, RAG по загружаемым документам.
+
+--- 
+
+#### Контакты
+
+- Автор: @tracebacker (https://github.com/DsRase)
+- Бот: @mega_pipindr_bot (https://t.me/mega_pipindr_bot)
+- Issues и PR — приветствуются, шаблоны issues уже настроены.
