@@ -1,0 +1,160 @@
+import { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
+import './App.css';
+
+const API_URL = 'http://localhost:8000/api/chat';
+const STORAGE_KEY = 'claudebot_messages';
+const USER_ID_KEY = 'claudebot_user_id';
+
+function getUserId() {
+  let userId = localStorage.getItem(USER_ID_KEY);
+  if (!userId) {
+    userId = 'user_' + Math.random().toString(36).substring(7);
+    localStorage.setItem(USER_ID_KEY, userId);
+  }
+  return userId;
+}
+
+function App() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const userId = getUserId();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      } catch (e) {
+        console.error('Ошибка парсинга:', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } else if (messages.length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 180) + 'px';
+    }
+  }, [input]);
+
+  const clearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
+    inputRef.current?.focus();
+  };
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    const newMessages = [...messages, { role: 'user', content: text }];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+
+    try {
+      const response = await axios.post(API_URL, {
+        message: text,
+        user_id: userId,
+        thread_id: userId
+      });
+      
+      const finalMessages = [...newMessages, { role: 'assistant', content: response.data.response }];
+      setMessages(finalMessages);
+    } catch {
+      const errorMessages = [...newMessages, { role: 'assistant', content: 'Ошибка соединения' }];
+      setMessages(errorMessages);
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  return (
+    <div className='chat-app'>
+      <header className='chat-header'>
+        <div className='header-info'>
+          <h1>ClaudeBot</h1>
+        </div>
+        <button className='clear-btn' onClick={clearHistory}>Очистить</button>
+      </header>
+
+      <main className='messages'>
+        {messages.length === 0 ? (
+          <div className='welcome'>
+            <h2>Начни диалог</h2>
+            <p>Напиши сообщение ниже</p>
+          </div>
+        ) : (
+          messages.map((message, index) => (
+            <div key={index} className={`message ${message.role}`}>
+              <div className='avatar'>{message.role === 'user' ? 'Ты' : 'Бот'}</div>
+              <div className='content'>{message.content}</div>
+            </div>
+          ))
+        )}
+
+        {loading && (
+          <div className='message assistant'>
+            <div className='avatar'>Бот</div>
+            <div className='content typing'>
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </main>
+
+      <footer className='input-area'>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder='Напишите сообщение...'
+          rows={1}
+        />
+        <button onClick={sendMessage} disabled={loading || !input.trim()}>
+          {loading ? '...' : 'Отправить'}
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
