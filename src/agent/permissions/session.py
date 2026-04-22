@@ -1,4 +1,4 @@
-from src.bot.permissions.state import get_permission_state
+from src.agent.permissions.state import get_permission_state
 from src.utils.logger.LoggerFactory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)

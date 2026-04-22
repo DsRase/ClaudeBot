@@ -2,7 +2,8 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 
-from src.bot.permissions import admin_required, reset_session_permissions
+from src.agent.permissions import reset_session_permissions
+from src.bot.permissions import admin_required
 from src.bot.markups import build_models_keyboard
 from src.config import BotMessages
 from src.config.settings import reload_settings

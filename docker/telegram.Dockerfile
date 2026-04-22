@@ -20,7 +20,7 @@ COPY migrations/ ./migrations/
 
 COPY alembic.ini ./
 
-COPY main.py ./
+COPY tg_main.py ./main.py
 
 RUN useradd -r -s /bin/false appuser && chown -R appuser /app
 

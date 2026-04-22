@@ -1,269 +1,152 @@
 import pytest
 
-from src.bot.handlers.chat import chat
-from src.config import BotMessages
-from src.storage.schemas import ChatMessage
+from src.bot.handlers import chat as chat_module
 
 
-BOT_USERNAME = "mega_pipindr_bot"
-BOT_ID = 42
-
-
-@pytest.fixture
-def history():
-    return [ChatMessage(role="user", id=10, ts=1000, text="привет", user_id=111)]
-
-
-@pytest.fixture
-def bot(mocker):
-    b = mocker.MagicMock()
-    b.me = mocker.AsyncMock(return_value=mocker.MagicMock(id=BOT_ID, username=BOT_USERNAME))
-    return b
-
-
-@pytest.fixture(autouse=True)
-def _mock_user_model(mocker):
-    """По дефолту юзер не имеет персональной модели — get_user_model отдаёт дефолт."""
-    return mocker.patch(
-        "src.bot.handlers.chat.get_user_model",
-        new=mocker.AsyncMock(return_value="claude-opus-4.6"),
-    )
-
-
-@pytest.fixture(autouse=True)
-def _mock_user_memory(mocker):
-    """По дефолту память юзера пуста."""
-    return mocker.patch(
-        "src.bot.handlers.chat.get_user_memory",
-        new=mocker.AsyncMock(return_value=None),
-    )
-
-
-@pytest.fixture
-def message(mocker):
+def _tg_message(mocker, text="hi", chat_type="private", reply_to=None, bot_id=100):
     msg = mocker.MagicMock()
-    msg.message_id = 555
-    msg.text = "привет"
-    msg.chat.id = 999
-    msg.chat.type = "private"
-    msg.from_user.id = 111
+    msg.text = text
+    msg.chat.type = chat_type
+    msg.chat.id = 2
+    msg.message_id = 10
+    msg.from_user.id = 1
     msg.from_user.is_bot = False
-    msg.from_user.username = "vasya"
-    msg.from_user.first_name = "Вася"
-    msg.from_user.last_name = "Пупкин"
-    msg.date.timestamp.return_value = 1000
-    msg.reply_to_message = None
-    sent = mocker.MagicMock()
-    sent.message_id = 777
-    sent.delete = mocker.AsyncMock()
-    msg.answer = mocker.AsyncMock(return_value=sent)
-    msg.reply = mocker.AsyncMock(return_value=sent)
+    msg.from_user.username = "u"
+    msg.from_user.first_name = "f"
+    msg.from_user.last_name = "l"
+    msg.date.timestamp = mocker.MagicMock(return_value=1000.0)
+    msg.reply_to_message = reply_to
     return msg
 
 
+def _bot(mocker, username="bot", user_id=100):
+    bot = mocker.MagicMock()
+    me = mocker.MagicMock()
+    me.username = username
+    me.id = user_id
+    bot.me = mocker.AsyncMock(return_value=me)
+    return bot
+
+
+class TestIsTriggered:
+    """_is_triggered: логика триггера в группах и личке."""
+
+    @pytest.mark.asyncio
+    async def test_private_always_triggers(self, mocker):
+        """В личке любое сообщение триггерит."""
+        msg = _tg_message(mocker, chat_type="private")
+        assert await chat_module._is_triggered(msg, _bot(mocker)) is True
+
+    @pytest.mark.asyncio
+    async def test_group_without_mention_does_not_trigger(self, mocker):
+        """В группе без @упоминания и без reply-to-bot — не триггер."""
+        msg = _tg_message(mocker, text="random", chat_type="group")
+        assert await chat_module._is_triggered(msg, _bot(mocker, username="bot")) is False
+
+    @pytest.mark.asyncio
+    async def test_group_mention_triggers(self, mocker):
+        """В группе с @упоминанием бота — триггер."""
+        msg = _tg_message(mocker, text="hey @bot привет", chat_type="group")
+        assert await chat_module._is_triggered(msg, _bot(mocker, username="bot")) is True
+
+    @pytest.mark.asyncio
+    async def test_group_reply_to_bot_triggers(self, mocker):
+        """В группе reply на сообщение бота — триггер."""
+        reply = mocker.MagicMock()
+        reply.from_user.id = 100
+        msg = _tg_message(mocker, text="yo", chat_type="group", reply_to=reply)
+        assert await chat_module._is_triggered(msg, _bot(mocker, user_id=100)) is True
+
+
+class TestToIncoming:
+    """_to_incoming: маппинг TG-сообщения в IncomingMessage."""
+
+    def test_basic_fields(self, mocker):
+        """Поля из aiogram.Message корректно перекладываются в IncomingMessage."""
+        msg = _tg_message(mocker)
+
+        incoming = chat_module._to_incoming(msg)
+
+        assert incoming.text == "hi"
+        assert incoming.user_id == 1
+        assert incoming.chat_id == 2
+        assert incoming.platform_msg_id == 10
+        assert incoming.ts == 1000
+        assert incoming.username == "u"
+
+    def test_reply_fields_from_reply_message(self, mocker):
+        """Если есть reply_to_message — reply_to_msg_id/reply_to_username заполняются."""
+        reply = mocker.MagicMock()
+        reply.message_id = 77
+        reply.from_user.username = "other"
+        msg = _tg_message(mocker, reply_to=reply)
+
+        incoming = chat_module._to_incoming(msg)
+
+        assert incoming.reply_to_msg_id == 77
+        assert incoming.reply_to_username == "other"
+
+    def test_no_reply_fields_are_none(self, mocker):
+        """Без reply_to_message → reply_to_* is None."""
+        msg = _tg_message(mocker)
+
+        incoming = chat_module._to_incoming(msg)
+
+        assert incoming.reply_to_msg_id is None
+        assert incoming.reply_to_username is None
+
+
 class TestChatHandler:
-    """Сценарии обработки входящего сообщения хендлером chat."""
+    """Главный @router.message() хендлер."""
 
     @pytest.mark.asyncio
-    async def test_allowed_user_gets_llm_answer(self, mocker, message, bot, history):
-        """Проверяет, что пользователь из access-списка в личке получает ответ от LLM."""
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111, 222],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ от LLM"))
+    async def test_ignores_messages_without_text(self, mocker):
+        """Сообщения без .text игнорируются (stickers/media/etc)."""
+        respond = mocker.patch("src.bot.handlers.chat.respond", new=mocker.AsyncMock())
+        record = mocker.patch("src.bot.handlers.chat.record_message", new=mocker.AsyncMock())
+        msg = _tg_message(mocker)
+        msg.text = None
 
-        await chat(message, bot)
+        await chat_module.chat(msg, _bot(mocker))
 
-        mock_ask.assert_awaited_once_with(
-            history,
-            model="claude-opus-4.6",
-            permission_requester=mocker.ANY,
-            extra_tools=mocker.ANY,
-            silent_tools=mocker.ANY,
-            user_memory=None,
-        ), "ask должен вызываться с историей, моделью и permission_requester"
-        message.answer.assert_any_await("ответ от LLM", entities=mocker.ANY), \
-            "ответ модели не был отправлен пользователю в личке через answer"
+        respond.assert_not_awaited()
+        record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_unknown_user_gets_rejection(self, mocker, message, bot):
-        """Проверяет, что пользователь не из access-списка получает отказ и LLM не вызывается."""
-        message.from_user.id = 999
+    async def test_ignores_bot_messages(self, mocker):
+        """Сообщения от ботов игнорируются."""
+        respond = mocker.patch("src.bot.handlers.chat.respond", new=mocker.AsyncMock())
+        record = mocker.patch("src.bot.handlers.chat.record_message", new=mocker.AsyncMock())
+        msg = _tg_message(mocker)
+        msg.from_user.is_bot = True
 
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111, 222],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
+        await chat_module.chat(msg, _bot(mocker))
 
-        await chat(message, bot)
-
-        mock_ask.assert_not_awaited(), "ask не должен был вызываться, но был вызван"
-        call_args = message.answer.await_args
-        actual_text = call_args[0][0] if call_args[0] else None
-        assert actual_text in BotMessages.NO_ACCESS, "вернулся текст не из списка NO_ACCESS"
+        respond.assert_not_awaited()
+        record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_chat_scoped_tools_passed_to_ask(self, mocker, message, bot, history):
-        """В ask должна передаваться chat-scoped тула read_full_history."""
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ok"))
+    async def test_non_triggered_group_only_records(self, mocker):
+        """В группе без триггера — только record_message, respond не зовётся."""
+        respond = mocker.patch("src.bot.handlers.chat.respond", new=mocker.AsyncMock())
+        record = mocker.patch("src.bot.handlers.chat.record_message", new=mocker.AsyncMock())
+        msg = _tg_message(mocker, text="ничего", chat_type="group")
 
-        await chat(message, bot)
+        await chat_module.chat(msg, _bot(mocker, username="bot"))
 
-        extra_tools = mock_ask.await_args.kwargs["extra_tools"]
-        names = [t.name for t in extra_tools]
-        assert "read_full_history" in names, f"read_full_history не попал в extra_tools: {names}"
+        record.assert_awaited_once()
+        respond.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_personal_user_model_passed_to_ask(self, mocker, message, bot, history, _mock_user_model):
-        """Если у юзера сохранена своя модель — она пробрасывается в ask вместо дефолта."""
-        _mock_user_model.return_value = "gpt-5.4"
+    async def test_triggered_calls_respond_with_adapters(self, mocker):
+        """В личке (триггер по умолчанию) — зовётся respond с тремя адаптерами."""
+        respond = mocker.patch("src.bot.handlers.chat.respond", new=mocker.AsyncMock())
+        mocker.patch("src.bot.handlers.chat.record_message", new=mocker.AsyncMock())
+        msg = _tg_message(mocker, chat_type="private")
 
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ok"))
+        await chat_module.chat(msg, _bot(mocker))
 
-        await chat(message, bot)
-
-        assert mock_ask.await_args.kwargs["model"] == "gpt-5.4", \
-            "модель юзера не пробросилась в ask"
-
-    @pytest.mark.asyncio
-    async def test_non_text_message_skipped(self, mocker, message, bot):
-        """Проверяет, что не-текстовое сообщение полностью игнорируется (без сохранения и без LLM)."""
-        message.text = None
-
-        mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
-
-        await chat(message, bot)
-
-        mock_add.assert_not_awaited(), "не-текстовое сообщение попало в Redis, а не должно было"
-        mock_ask.assert_not_awaited(), "ask вызван для не-текстового сообщения"
-
-    @pytest.mark.asyncio
-    async def test_bot_message_skipped(self, mocker, message, bot):
-        """Проверяет, что сообщение от бота полностью игнорируется."""
-        message.from_user.is_bot = True
-
-        mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
-
-        await chat(message, bot)
-
-        mock_add.assert_not_awaited(), "сообщение от бота попало в Redis, а не должно было"
-        mock_ask.assert_not_awaited(), "ask вызван для сообщения от бота"
-
-    @pytest.mark.asyncio
-    async def test_group_message_without_trigger_only_saved(self, mocker, message, bot):
-        """Проверяет, что в группе без упоминания/реплая сообщение только сохраняется, без ответа."""
-        message.chat.type = "group"
-        message.text = "просто болтаем без бота"
-
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock())
-
-        await chat(message, bot)
-
-        mock_add.assert_awaited_once(), "сообщение из группы должно быть сохранено в Redis"
-        mock_ask.assert_not_awaited(), "ask вызван без триггера в группе"
-        message.reply.assert_not_awaited(), "был отправлен reply без триггера"
-        message.answer.assert_not_awaited(), "был отправлен answer без триггера"
-
-    @pytest.mark.asyncio
-    async def test_group_mention_triggers_reply(self, mocker, message, bot, history):
-        """Проверяет, что упоминание @username бота в группе приводит к ответу через reply."""
-        message.chat.type = "group"
-        message.text = f"@{BOT_USERNAME} как дела?"
-
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ"))
-
-        await chat(message, bot)
-
-        mock_ask.assert_awaited_once(), "ask должен быть вызван при упоминании бота в группе"
-        message.reply.assert_any_await("ответ", entities=mocker.ANY), \
-            "ответ в группе должен быть отправлен через reply, а не answer"
-
-    @pytest.mark.asyncio
-    async def test_reply_to_username_captured(self, mocker, message, bot, history):
-        """При ответе на чужое сообщение в Redis сохраняются @username адресата и id сообщения."""
-        message.reply_to_message = mocker.MagicMock()
-        message.reply_to_message.message_id = 222
-        message.reply_to_message.from_user.username = "petya"
-
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mock_add = mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ"))
-
-        await chat(message, bot)
-
-        saved_user_msg = mock_add.await_args_list[0].args[1]
-        assert saved_user_msg.to_username == "petya", \
-            f"to_username не сохранился, получено: {saved_user_msg.to_username!r}"
-        assert saved_user_msg.reply_id == 222, \
-            f"reply_id не сохранился, получено: {saved_user_msg.reply_id!r}"
-
-    @pytest.mark.asyncio
-    async def test_ask_failure_sends_error_and_deletes_think_msg(self, mocker, message, bot, history):
-        """Если ask падает — юзеру летит сообщение из LLM_ERROR, а думалка удаляется."""
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(side_effect=RuntimeError("upstream 421")))
-
-        think_msg = mocker.MagicMock()
-        think_msg.message_id = 777
-        think_msg.delete = mocker.AsyncMock()
-        message.answer = mocker.AsyncMock(return_value=think_msg)
-
-        await chat(message, bot)
-
-        think_msg.delete.assert_awaited_once(), "думалка должна быть удалена даже при ошибке ask"
-        sent_texts = [c.args[0] for c in message.answer.await_args_list if c.args]
-        assert any(t in BotMessages.LLM_ERROR for t in sent_texts), \
-            f"юзеру не отправлен текст из LLM_ERROR, отправлено: {sent_texts}"
-
-    @pytest.mark.asyncio
-    async def test_group_reply_to_bot_triggers_reply(self, mocker, message, bot, history):
-        """Проверяет, что ответ на сообщение бота в группе приводит к срабатыванию хендлера."""
-        message.chat.type = "group"
-        message.text = "и что дальше?"
-        message.reply_to_message = mocker.MagicMock()
-        message.reply_to_message.from_user.id = BOT_ID
-        message.reply_to_message.from_user.username = None
-
-        mocker.patch("src.bot.handlers.chat.get_settings").return_value.configure_mock(
-            access_user_ids=[111],
-        )
-        mocker.patch("src.bot.handlers.chat.add_message", new=mocker.AsyncMock())
-        mocker.patch("src.bot.handlers.chat.get_context", new=mocker.AsyncMock(return_value=history))
-        mock_ask = mocker.patch("src.bot.handlers.chat.ask", new=mocker.AsyncMock(return_value="ответ"))
-
-        await chat(message, bot)
-
-        mock_ask.assert_awaited_once(), "ask должен быть вызван при ответе на сообщение бота"
-        message.reply.assert_any_await("ответ", entities=mocker.ANY), \
-            "ответ должен быть отправлен через reply"
+        respond.assert_awaited_once()
+        args = respond.await_args.args
+        assert args[0].text == "hi"
+        assert args[1] is not None and args[2] is not None and args[3] is not None

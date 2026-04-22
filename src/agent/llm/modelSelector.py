@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from src.agent.langTools import choose_model_tool
+from src.agent.llm.langTools import choose_model_tool
 from src.config import AgentMessages
 from src.config.settings import get_settings
 from src.utils.logger.LoggerFactory import LoggerFactory

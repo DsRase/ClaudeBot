@@ -21,12 +21,16 @@ class PendingRequest(BaseModel):
 
 
 class PermissionState:
-    """In-memory состояние permission-системы. Сбрасывается при перезапуске бота."""
+    """In-memory состояние permission-системы. Сбрасывается при перезапуске процесса.
+
+    Живёт в agent (а не в bot), потому что разделяется всеми интерфейсами в одном процессе:
+    тула, разрешённая на сессию через TG, остаётся разрешённой и для других вызовов внутри
+    того же процесса. На разные процессы (TG vs Discord vs web) состояние не делится — каждый
+    инстанс держит свой кэш, что нормально для in-memory session-кэша.
+    """
 
     def __init__(self):
-        # user_id → set имён тул, разрешённых до конца сессии
         self.session_permissions: dict[int, set[str]] = {}
-        # request_id → активный PendingRequest
         self.pending_requests: dict[str, PendingRequest] = {}
 
     def is_allowed_in_session(self, user_id: int, tool_name: str) -> bool:

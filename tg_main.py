@@ -1,7 +1,9 @@
 import asyncio
+
+from aiogram import Bot, Dispatcher
 from alembic import command
 from alembic.config import Config
-from aiogram import Bot, Dispatcher
+
 from src.bot.router import include_routers
 from src.config.settings import get_settings
 from src.utils.metrics import start_metrics_server
@@ -25,5 +27,5 @@ async def main():
         await dp.start_polling(bot)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

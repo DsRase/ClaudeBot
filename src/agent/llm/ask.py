@@ -1,13 +1,12 @@
 import json
 import re
 import time
-from typing import Awaitable, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from openai import APIStatusError
 
-from src.agent.langTools import ALL_TOOLS
+from src.agent.ports import PermissionRequester
 from src.config import AgentMessages, get_settings
 from src.storage.schemas import ChatMessage
 from src.utils.logger.LoggerFactory import LoggerFactory
@@ -18,8 +17,6 @@ from src.utils.metrics import (
 )
 
 logger = LoggerFactory.get_logger(__name__)
-
-PermissionRequester = Callable[[str, str], Awaitable[bool]]
 
 
 def _dump_msg(msg: ChatMessage) -> str:
@@ -66,7 +63,7 @@ async def _execute_tool_call(
 
     if tool_name not in silent_tool_names:
         description = AgentMessages.tool_descriptions_for_user.get(tool_name, tool_name)
-        allowed = await permission_requester(tool_name, description)
+        allowed = await permission_requester.request(tool_name, description)
         if not allowed:
             logger.info(f"tool '{tool_name}' отклонён юзером (id={tool_id})")
             return ToolMessage(content="User denied permission to use this tool.", tool_call_id=tool_id)
@@ -108,12 +105,16 @@ async def _invoke_llm(llm, messages, model: str):
 async def ask(
     history: list[ChatMessage],
     model: str,
+    tools: list,
     permission_requester: PermissionRequester | None = None,
-    extra_tools: list | None = None,
-    silent_tools: list | None = None,
+    silent_tool_names: set[str] | None = None,
     user_memory: str | None = None,
 ) -> str:
-    """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ."""
+    """Отправляет историю в LLM, крутит tool-calling loop, возвращает финальный текстовый ответ.
+
+    `tools` — полный список доступных агенту тул (LangChain Tool). Билдит и передаёт их вызывающая сторона.
+    `silent_tool_names` — имена тул, для которых permission НЕ запрашивается (например, user_memory-тулы).
+    """
     settings = get_settings()
     logger.debug(f"Запрос к модели {model}, сообщений в контексте: {len(history)}")
 
@@ -125,11 +126,10 @@ async def ask(
         max_tokens=settings.max_tokens,
         default_headers={"User-Agent": settings.fetch_user_agent},
     )
-    silent_tool_names = {t.name for t in (silent_tools or [])}
-    tools = ALL_TOOLS + (extra_tools or []) + (silent_tools or [])
+    silent_tool_names = silent_tool_names or set()
     tools_by_name = {t.name: t for t in tools}
     should_bind = permission_requester is not None or bool(silent_tool_names)
-    llm_with_tools = llm.bind_tools(tools) if should_bind else llm
+    llm_with_tools = llm.bind_tools(tools) if should_bind and tools else llm
 
     system_content = AgentMessages.system_prompt
     if user_memory:

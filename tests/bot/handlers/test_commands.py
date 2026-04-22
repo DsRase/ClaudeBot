@@ -5,7 +5,7 @@ from src.bot.handlers.commands import (
     start_command, help_command, getid_command, on_reset_perms,
     update_conf_command, change_model, change_model_callback, cancel_model_callback,
 )
-from src.bot.permissions.state import get_permission_state
+from src.agent.permissions.state import get_permission_state
 from src.config import BotMessages
 
 

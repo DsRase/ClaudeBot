@@ -1,6 +1,9 @@
 services:
   bot:
     image: ghcr.io/dsrase/claudebot:${BOT_VERSION:?BOT_VERSION must be set (e.g. dev, dev-42, prod-42)}
+    build:
+      context: .
+      dockerfile: docker/telegram.Dockerfile
     container_name: bot-${STAND:?STAND must be set (prod|dev)}
     env_file: .env
     restart: unless-stopped

@@ -1,19 +1,14 @@
-import asyncio
-from datetime import datetime, timezone
-
-import telegramify_markdown
 from aiogram import Bot, Router
-from aiogram.types import Message, MessageEntity
+from aiogram.types import Message
 
-from src.agent.agent import ask
-from src.agent.langTools import make_chat_scoped_tools, make_user_memory_tools
-from src.agent.modelSelector import ADAPTIVE_MODEL_NAME, select_model
-from src.bot.permissions import request_permission
-from src.config import BotMessages
-from src.config.settings import get_settings
-from src.storage import ChatMessage, add_message, get_context, get_user_model, get_user_memory
+from src.agent.dto import IncomingMessage
+from src.agent.service import record_message, respond
+from src.bot.adapters import (
+    TelegramPermissionRequester,
+    TelegramResponseChannel,
+    TelegramThinkingIndicator,
+)
 from src.utils.logger.LoggerFactory import LoggerFactory
-from src.utils.messager import add_think_load, get_random_message, split_text_with_entities
 from src.utils.metrics import bot_messages_total
 
 router = Router()
@@ -34,139 +29,54 @@ async def _is_triggered(message: Message, bot: Bot) -> bool:
     return mentioned or replied_to_bot
 
 
+def _to_incoming(message: Message) -> IncomingMessage:
+    reply_to_msg_id = None
+    reply_to_username = None
+    if message.reply_to_message:
+        reply_to_msg_id = message.reply_to_message.message_id
+        if message.reply_to_message.from_user:
+            reply_to_username = message.reply_to_message.from_user.username
+    return IncomingMessage(
+        text=message.text,
+        user_id=message.from_user.id,
+        chat_id=message.chat.id,
+        platform_msg_id=message.message_id,
+        ts=int(message.date.timestamp()),
+        username=message.from_user.username,
+        fname=message.from_user.first_name,
+        lname=message.from_user.last_name,
+        reply_to_msg_id=reply_to_msg_id,
+        reply_to_username=reply_to_username,
+    )
+
+
 @router.message()
 async def chat(message: Message, bot: Bot):
     """Сохраняет любое текстовое сообщение в контекст чата и отвечает, если триггер сработал."""
-    # Игнорируем не-текстовые сообщения и сообщения от ботов (включая собственные)
     if not message.text or message.from_user is None or message.from_user.is_bot:
         return
 
-    user_id = message.from_user.id
-    chat_id = message.chat.id
+    incoming = _to_incoming(message)
     is_private = message.chat.type == "private"
 
-    logger.info(f"user_id={user_id}, chat_id={chat_id}, type={message.chat.type}: получено сообщение")
-
-    to_username = None
-    reply_id = None
-    if message.reply_to_message:
-        reply_id = message.reply_to_message.message_id
-        if message.reply_to_message.from_user:
-            to_username = message.reply_to_message.from_user.username
-
-    user_msg = ChatMessage(
-        role="user",
-        id=message.message_id,
-        ts=int(message.date.timestamp()),
-        from_username=message.from_user.username,
-        fname=message.from_user.first_name,
-        lname=message.from_user.last_name,
-        to_username=to_username,
-        reply_id=reply_id,
-        text=message.text,
-        user_id=user_id,
+    logger.info(
+        f"user_id={incoming.user_id}, chat_id={incoming.chat_id}, "
+        f"type={message.chat.type}: получено сообщение"
     )
-    await add_message(chat_id, user_msg)
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: сообщение пользователя сохранено в Redis")
 
     if not await _is_triggered(message, bot):
-        logger.debug(f"user_id={user_id}, chat_id={chat_id}: триггер не сработал, пропускаем ответ")
+        await record_message(incoming)
         bot_messages_total.labels(status="ignored").inc()
         return
 
-    bot_messages_total.labels(status="triggered").inc()
-
-    # В группе отвечаем реплаем на сообщение, в личке - обычным answer
-    respond = message.answer if is_private else message.reply
-
-    settings = get_settings()
-    if user_id not in settings.access_user_ids:
-        logger.warning(f"user_id={user_id}, chat_id={chat_id}: доступ отклонён")
-        bot_messages_total.labels(status="no_access").inc()
-        await respond(get_random_message(BotMessages.NO_ACCESS))
-        return
-
-    history = await get_context(chat_id)
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: получен контекст ({len(history)} сообщений)")
-
-    think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
-    think_task = asyncio.create_task(add_think_load(think_msg))
-
-    model = await get_user_model(user_id)
-    if model == ADAPTIVE_MODEL_NAME:
-        real_models = [m for m in get_settings().available_models if m != ADAPTIVE_MODEL_NAME]
-        model = await select_model(message.text, real_models)
-        logger.debug(f"user_id={user_id}, chat_id={chat_id}: adaptive выбрал модель {model}")
-    else:
-        logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
-
-    memory = await get_user_memory(user_id)
-    logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
-
-    async def permission_requester(tool_name: str, tool_description: str) -> bool:
-        return await request_permission(
-            bot=bot,
-            chat_id=chat_id,
-            initiator_user_id=user_id,
-            initiator_username=message.from_user.username,
-            tool_name=tool_name,
-            tool_description=tool_description,
-            reply_to_message_id=None if is_private else message.message_id,
-        )
-
-    first_sent = None
-    try:
-        try:
-            answer = await ask(
-                history,
-                model=model,
-                permission_requester=permission_requester,
-                extra_tools=make_chat_scoped_tools(chat_id),
-                silent_tools=make_user_memory_tools(user_id),
-                user_memory=memory,
-            )
-        except Exception:
-            logger.exception(f"user_id={user_id}, chat_id={chat_id}: ask упал")
-            bot_messages_total.labels(status="error").inc()
-            await respond(get_random_message(BotMessages.LLM_ERROR))
-            return
-
-        text, entities = telegramify_markdown.convert(answer)
-        entities = [MessageEntity(**entity.to_dict()) for entity in entities]
-        chunk_size = 4096  # ограничение телеграма на длину сообщения
-        chunks = split_text_with_entities(text, entities, chunk_size)
-
-        try:
-            for i, (chunk_text, chunk_entities) in enumerate(chunks):
-                # Реплаем отправляем только первый чанк, остальные — обычными сообщениями
-                send = respond if i == 0 else message.answer
-                sent = await send(chunk_text, entities=chunk_entities)
-                if i == 0:
-                    first_sent = sent
-        except Exception:
-            logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
-            raise
-    finally:
-        think_task.cancel()
-        try:
-            await think_task
-        except (asyncio.CancelledError, Exception):
-            pass
-        try:
-            await think_msg.delete()
-        except Exception:
-            logger.warning(f"user_id={user_id}, chat_id={chat_id}: не удалось удалить think_msg")
-
-    assistant_msg = ChatMessage(
-        role="assistant",
-        id=first_sent.message_id,
-        ts=int(datetime.now(timezone.utc).timestamp()),
-        from_username="Пипиндр",
-        to_username=message.from_user.username,
-        reply_id=message.message_id,
-        text=answer,
+    response = TelegramResponseChannel(message)
+    permissions = TelegramPermissionRequester(
+        bot=bot,
+        chat_id=incoming.chat_id,
+        initiator_user_id=incoming.user_id,
+        initiator_username=incoming.username,
+        reply_to_message_id=None if is_private else message.message_id,
     )
-    await add_message(chat_id, assistant_msg)
-    bot_messages_total.labels(status="success").inc()
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: ответ ассистента сохранён в Redis")
-    logger.info(f"user_id={user_id}, chat_id={chat_id}: ответ отправлен")
+    thinking = TelegramThinkingIndicator(message)
+
+    await respond(incoming, response, permissions, thinking)

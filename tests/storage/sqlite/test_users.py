@@ -3,9 +3,14 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from src.storage.sqlite import models
-from src.storage.sqlite import engine as engine_module
 from src.storage.sqlite import users as users_module
-from src.storage.sqlite.users import get_user_model, set_user_model
+from src.storage.sqlite.users import (
+    clear_user_memory,
+    get_user_memory,
+    get_user_model,
+    set_user_memory,
+    set_user_model,
+)
 
 
 @pytest.fixture
@@ -83,6 +88,7 @@ class TestEngine:
     async def test_init_db_creates_users_table(self, mocker, tmp_path):
         """init_db применяет схему, после неё можно делать select из users."""
         from sqlalchemy import select
+        from src.storage.sqlite import engine as engine_module
         db_path = tmp_path / "bot.db"
         mocker.patch.object(engine_module, "get_settings", return_value=mocker.MagicMock(
             sqlite_path=str(db_path),
@@ -99,3 +105,47 @@ class TestEngine:
             await engine_module.get_engine().dispose()
             engine_module.get_engine.cache_clear()
             engine_module._session_factory.cache_clear()
+
+
+class TestGetUserMemory:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_record(self, fake_settings, in_memory_db):
+        assert await get_user_memory(user_id=42) is None
+
+    @pytest.mark.asyncio
+    async def test_returns_saved_memory(self, fake_settings, in_memory_db):
+        await set_user_memory(user_id=42, memory="любит котиков")
+        assert await get_user_memory(user_id=42) == "любит котиков"
+
+
+class TestSetUserMemory:
+    @pytest.mark.asyncio
+    async def test_creates_record(self, fake_settings, in_memory_db):
+        await set_user_memory(user_id=7, memory="hello")
+        assert await get_user_memory(7) == "hello"
+
+    @pytest.mark.asyncio
+    async def test_upserts_existing_record(self, fake_settings, in_memory_db):
+        await set_user_memory(user_id=7, memory="v1")
+        await set_user_memory(user_id=7, memory="v2")
+        assert await get_user_memory(7) == "v2"
+
+    @pytest.mark.asyncio
+    async def test_preserves_user_model(self, fake_settings, in_memory_db):
+        """set_user_memory не должен затирать ранее установленную модель."""
+        await set_user_model(user_id=7, model="gpt-5.4")
+        await set_user_memory(user_id=7, memory="note")
+        assert await get_user_model(7) == "gpt-5.4"
+
+
+class TestClearUserMemory:
+    @pytest.mark.asyncio
+    async def test_clears_existing_memory(self, fake_settings, in_memory_db):
+        await set_user_memory(user_id=7, memory="note")
+        await clear_user_memory(user_id=7)
+        assert await get_user_memory(7) is None
+
+    @pytest.mark.asyncio
+    async def test_noop_when_no_record(self, fake_settings, in_memory_db):
+        await clear_user_memory(user_id=999)
+        assert await get_user_memory(999) is None

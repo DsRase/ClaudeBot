@@ -1,9 +1,7 @@
 from aiogram import F, Router
-from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery
 
-from src.bot.permissions.resetSessionPermissions import reset_session_permissions
-from src.bot.permissions.state import get_permission_state
+from src.agent.permissions import get_permission_state
 from src.utils.logger.LoggerFactory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
