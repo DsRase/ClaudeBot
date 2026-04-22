@@ -1,4 +1,4 @@
-name: Deploy Dev
+name: Deploy Monitoring
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to VPS (dev)
+      - name: Deploy monitoring stack to VPS
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -15,8 +15,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
-            mkdir -p /opt/claudebot-dev
-            cd /opt/claudebot-dev
+            mkdir -p /opt/claudebot-monitoring
+            cd /opt/claudebot-monitoring
             docker-compose pull
             docker-compose up -d --remove-orphans
             docker image prune -af

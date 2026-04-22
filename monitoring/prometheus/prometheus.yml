@@ -5,7 +5,12 @@ global:
 scrape_configs:
   - job_name: bot
     static_configs:
-      - targets: ['bot:9000']
+      - targets: ['bot-prod:9000']
+        labels:
+          stand: prod
+      - targets: ['bot-dev:9000']
+        labels:
+          stand: dev
 
   - job_name: node
     static_configs:
@@ -13,4 +18,9 @@ scrape_configs:
 
   - job_name: redis
     static_configs:
-      - targets: ['redis_exporter:9121']
+      - targets: ['redis_exporter_prod:9121']
+        labels:
+          stand: prod
+      - targets: ['redis_exporter_dev:9121']
+        labels:
+          stand: dev
