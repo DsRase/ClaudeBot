@@ -59,11 +59,14 @@ jobs:
       - name: Install crane
         uses: imjasonh/setup-crane@v0.4
 
-      - name: Retag dev-N → prod-M
+      - name: Retag dev-N → prod-M (+ mutable :prod)
         run: |
           crane copy \
             ${{ env.IMAGE }}:dev-${{ steps.resolve.outputs.dev_build }} \
             ${{ env.IMAGE }}:prod-${{ steps.resolve.outputs.prod_build }}
+          crane copy \
+            ${{ env.IMAGE }}:dev-${{ steps.resolve.outputs.dev_build }} \
+            ${{ env.IMAGE }}:prod
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
