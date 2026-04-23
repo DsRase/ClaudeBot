@@ -3,8 +3,10 @@ import axios from 'axios';
 import './App.css';
 
 const API_URL = 'http://localhost:8000/api/chat';
+const MODELS_URL = 'http://localhost:8000/api/models';
 const STORAGE_KEY = 'claudebot_messages';
 const USER_ID_KEY = 'claudebot_user_id';
+const MODEL_KEY = 'claudebot_selected_model';
 
 function getUserId() {
   let userId = localStorage.getItem(USER_ID_KEY);
@@ -19,9 +21,27 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [availableModels, setAvailableModels] = useState([]);
+  const [showModels, setShowModels] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const userId = getUserId();
+
+  useEffect(() => {
+    axios.get(MODELS_URL).then(res => {
+      setAvailableModels(res.data.available);
+      const saved = localStorage.getItem(MODEL_KEY);
+      if (saved && res.data.available.includes(saved)) {
+        setSelectedModel(saved);
+      } else {
+        setSelectedModel(res.data.default);
+        localStorage.setItem(MODEL_KEY, res.data.default);
+      }
+    }).catch(err => {
+      console.error('Ошибка загрузки моделей:', err);
+    });
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -32,7 +52,7 @@ function App() {
           setMessages(parsed);
         }
       } catch (e) {
-        console.error('Ошибка парсинга:', e);
+        // ignore
       }
     }
   }, []);
@@ -67,6 +87,12 @@ function App() {
     inputRef.current?.focus();
   };
 
+  const changeModel = (model) => {
+    setSelectedModel(model);
+    localStorage.setItem(MODEL_KEY, model);
+    setShowModels(false);
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -84,7 +110,8 @@ function App() {
       const response = await axios.post(API_URL, {
         message: text,
         user_id: userId,
-        thread_id: userId
+        thread_id: userId,
+        model: selectedModel
       });
       
       const finalMessages = [...newMessages, { role: 'assistant', content: response.data.response }];
@@ -105,11 +132,33 @@ function App() {
     }
   };
 
+  const getShortName = (fullName) => {
+    return fullName.replace('claude-', '').replace('gpt-', '').replace('gemini-', '');
+  };
+
   return (
     <div className='chat-app'>
       <header className='chat-header'>
         <div className='header-info'>
           <h1>ClaudeBot</h1>
+          <div className='model-selector'>
+            <button className='model-btn' onClick={() => setShowModels(!showModels)}>
+              {selectedModel ? getShortName(selectedModel) : 'Выбрать модель'} ▼
+            </button>
+            {showModels && availableModels.length > 0 && (
+              <div className='model-dropdown'>
+                {availableModels.map(model => (
+                  <div 
+                    key={model}
+                    className={`model-option ${selectedModel === model ? 'active' : ''}`}
+                    onClick={() => changeModel(model)}
+                  >
+                    <span className='model-name'>{model}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <button className='clear-btn' onClick={clearHistory}>Очистить</button>
       </header>
