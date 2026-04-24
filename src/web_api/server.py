@@ -36,10 +36,13 @@ def load_config():
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
+import asyncio
+
+## МЕНЯТЬ
 def get_response(message: str, user_id: str, model: str = None) -> str:
-    config = load_config()
-    selected = model if model else config.get("default_model")
-    return f"[{selected}] Вы написали: {message}"
+    import time
+    time.sleep(2)
+    return f"Вы написали: {message}"
 
 @app.get("/api/models", response_model=ModelsResponse)
 async def get_models():

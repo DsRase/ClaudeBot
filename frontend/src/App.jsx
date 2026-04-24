@@ -32,11 +32,11 @@ function App() {
     axios.get(MODELS_URL).then(res => {
       setAvailableModels(res.data.available);
       const saved = localStorage.getItem(MODEL_KEY);
-      if (saved && res.data.available.includes(saved)) {
+      if (saved && (saved === 'adaptive' || res.data.available.includes(saved))) {
         setSelectedModel(saved);
       } else {
-        setSelectedModel(res.data.default);
-        localStorage.setItem(MODEL_KEY, res.data.default);
+        setSelectedModel('adaptive');
+        localStorage.setItem(MODEL_KEY, 'adaptive');
       }
     }).catch(err => {
       console.error('Ошибка загрузки моделей:', err);
@@ -93,9 +93,16 @@ function App() {
     setShowModels(false);
   };
 
+  const MAX_MESSAGE_LENGTH = 10000;
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
+
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      alert(`Максимальная длина сообщения ${MAX_MESSAGE_LENGTH} символов`);
+      return;
+    }
 
     const newMessages = [...messages, { role: 'user', content: text }];
     setMessages(newMessages);
@@ -107,11 +114,13 @@ function App() {
     }
 
     try {
+      const modelToSend = selectedModel === 'adaptive' ? null : selectedModel;
+      
       const response = await axios.post(API_URL, {
         message: text,
         user_id: userId,
         thread_id: userId,
-        model: selectedModel
+        model: modelToSend
       });
       
       const finalMessages = [...newMessages, { role: 'assistant', content: response.data.response }];
@@ -133,6 +142,7 @@ function App() {
   };
 
   const getShortName = (fullName) => {
+    if (fullName === 'adaptive') return 'Auto';
     return fullName.replace('claude-', '').replace('gpt-', '').replace('gemini-', '');
   };
 
@@ -145,8 +155,14 @@ function App() {
             <button className='model-btn' onClick={() => setShowModels(!showModels)}>
               {selectedModel ? getShortName(selectedModel) : 'Выбрать модель'} ▼
             </button>
-            {showModels && availableModels.length > 0 && (
+            {showModels && (
               <div className='model-dropdown'>
+                <div 
+                  className={`model-option ${selectedModel === 'adaptive' ? 'active' : ''}`}
+                  onClick={() => changeModel('adaptive')}
+                >
+                  <span className='model-name'>Adaptive</span>
+                </div>
                 {availableModels.map(model => (
                   <div 
                     key={model}
@@ -172,7 +188,13 @@ function App() {
         ) : (
           messages.map((message, index) => (
             <div key={index} className={`message ${message.role}`}>
-              <div className='avatar'>{message.role === 'user' ? 'Ты' : 'Бот'}</div>
+              <div className='avatar'>
+                <img 
+                  src={message.role === 'user' ? '/user.png' : '/bot.png'} 
+                  alt={message.role === 'user' ? 'Пользователь' : 'Бот'} 
+                  className='avatar-img' 
+                />
+              </div>
               <div className='content'>{message.content}</div>
             </div>
           ))
@@ -180,10 +202,7 @@ function App() {
 
         {loading && (
           <div className='message assistant'>
-            <div className='avatar'>Бот</div>
-            <div className='content typing'>
-              <span></span><span></span><span></span>
-            </div>
+            <div className="pulse-circle"></div>
           </div>
         )}
         <div ref={messagesEndRef} />
