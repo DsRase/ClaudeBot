@@ -4,6 +4,7 @@ from src.config.settings import get_settings
 from src.storage.redis.redis_client import get_redis
 from src.storage.schemas.chatMessage import ChatMessage
 from src.utils.logger.LoggerFactory import LoggerFactory
+from src.utils.metrics import redis_operations_total
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -20,8 +21,13 @@ async def add_message(chat_id: int, message: ChatMessage) -> None:
     redis = get_redis()
     settings = get_settings()
     key = _key(chat_id)
-    await redis.rpush(key, json.dumps(message.model_dump(mode="python"), ensure_ascii=False))
-    await redis.ltrim(key, -settings.context_max_stored, -1)
+    try:
+        await redis.rpush(key, json.dumps(message.model_dump(mode="python"), ensure_ascii=False))
+        await redis.ltrim(key, -settings.context_max_stored, -1)
+        redis_operations_total.labels(operation="add_message", status="success").inc()
+    except Exception:
+        redis_operations_total.labels(operation="add_message", status="error").inc()
+        raise
     logger.debug(f"chat_id={chat_id}: добавлено сообщение role={message.role}")
 
 
@@ -32,7 +38,12 @@ async def get_context(chat_id: int, limit: int | None = None) -> list[ChatMessag
     if limit is None:
         limit = settings.context_default_limit
     key = _key(chat_id)
-    raw_messages = await redis.lrange(key, -limit, -1)
+    try:
+        raw_messages = await redis.lrange(key, -limit, -1)
+        redis_operations_total.labels(operation="get_context", status="success").inc()
+    except Exception:
+        redis_operations_total.labels(operation="get_context", status="error").inc()
+        raise
     messages = [ChatMessage.model_validate(json.loads(m)) for m in raw_messages]
     logger.debug(f"chat_id={chat_id}: получено {len(messages)} сообщений (limit={limit})")
     return messages

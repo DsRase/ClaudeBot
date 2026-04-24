@@ -47,8 +47,8 @@ class TestSettings:
         settings = Settings()
 
         assert settings.access_user_ids == [], "дефолтный access_user_ids не пустой"
-        assert settings.default_model == "claude-opus-4.6", "дефолтная default_model изменилась"
-        assert settings.available_models == ["claude-opus-4.6"]
+        assert settings.default_model == "claude-opus-4.7", "дефолтная default_model изменилась"
+        assert settings.available_models == ["claude-opus-4.7"]
         assert settings.sqlite_path == "data/bot.db"
         assert settings.llm_base_url == "https://api.stepanovikov.uno/v1"
 

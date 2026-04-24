@@ -1,6 +1,21 @@
 class AgentMessages:
     """Класс с константными сообщениями для агента (не для юзера)."""
 
+    tool_descriptions_for_llm_selector = {
+        "choose_model": (
+            "Select the most appropriate model for the user's request. "
+            "Call this tool with exactly one model name from the provided list."
+        ),
+    }
+
+    selector_system_prompt = (
+        "You are a model router. Select the most appropriate model for the user's request.\n\n"
+        "Guidelines:\n"
+        "- Simple questions, casual chat, short creative tasks → prefer faster/cheaper models\n"
+        "- Complex reasoning, coding, deep analysis, multi-step tasks → prefer the most capable model\n"
+        "Call choose_model with exactly one model name from the available list."
+    )
+
     tool_descriptions_for_user = {
         "search_web": "🔎 Поиск в интернете через DuckDuckGo по заданному запросу.",
         "fetch_url": "🌐 Скачать страницу по URL и достать оттуда текст.",

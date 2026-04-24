@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import telegramify_markdown
@@ -6,12 +7,14 @@ from aiogram.types import Message, MessageEntity
 
 from src.agent.agent import ask
 from src.agent.langTools import make_chat_scoped_tools, make_user_memory_tools
+from src.agent.modelSelector import ADAPTIVE_MODEL_NAME, select_model
 from src.bot.permissions import request_permission
 from src.config import BotMessages
 from src.config.settings import get_settings
 from src.storage import ChatMessage, add_message, get_context, get_user_model, get_user_memory
 from src.utils.logger.LoggerFactory import LoggerFactory
-from src.utils.messager import get_random_message, split_text_with_entities
+from src.utils.messager import add_think_load, get_random_message, split_text_with_entities
+from src.utils.metrics import bot_messages_total
 
 router = Router()
 logger = LoggerFactory.get_logger(__name__)
@@ -68,7 +71,10 @@ async def chat(message: Message, bot: Bot):
 
     if not await _is_triggered(message, bot):
         logger.debug(f"user_id={user_id}, chat_id={chat_id}: триггер не сработал, пропускаем ответ")
+        bot_messages_total.labels(status="ignored").inc()
         return
+
+    bot_messages_total.labels(status="triggered").inc()
 
     # В группе отвечаем реплаем на сообщение, в личке - обычным answer
     respond = message.answer if is_private else message.reply
@@ -76,19 +82,26 @@ async def chat(message: Message, bot: Bot):
     settings = get_settings()
     if user_id not in settings.access_user_ids:
         logger.warning(f"user_id={user_id}, chat_id={chat_id}: доступ отклонён")
+        bot_messages_total.labels(status="no_access").inc()
         await respond(get_random_message(BotMessages.NO_ACCESS))
         return
 
     history = await get_context(chat_id)
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: получен контекст ({len(history)} сообщений)")
 
+    think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
+    think_task = asyncio.create_task(add_think_load(think_msg))
+
     model = await get_user_model(user_id)
-    logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
+    if model == ADAPTIVE_MODEL_NAME:
+        real_models = [m for m in get_settings().available_models if m != ADAPTIVE_MODEL_NAME]
+        model = await select_model(message.text, real_models)
+        logger.debug(f"user_id={user_id}, chat_id={chat_id}: adaptive выбрал модель {model}")
+    else:
+        logger.debug(f"user_id={user_id}, chat_id={chat_id}: используется модель {model}")
 
     memory = await get_user_memory(user_id)
     logger.debug(f"user_id={user_id}: память {'загружена' if memory else 'пуста'}")
-
-    think_msg = await respond(get_random_message(BotMessages.WAIT_FOR_RESPONSE))
 
     async def permission_requester(tool_name: str, tool_description: str) -> bool:
         return await request_permission(
@@ -114,6 +127,7 @@ async def chat(message: Message, bot: Bot):
             )
         except Exception:
             logger.exception(f"user_id={user_id}, chat_id={chat_id}: ask упал")
+            bot_messages_total.labels(status="error").inc()
             await respond(get_random_message(BotMessages.LLM_ERROR))
             return
 
@@ -133,6 +147,11 @@ async def chat(message: Message, bot: Bot):
             logger.exception(f"user_id={user_id}, chat_id={chat_id}: не удалось отправить ответ юзеру")
             raise
     finally:
+        think_task.cancel()
+        try:
+            await think_task
+        except (asyncio.CancelledError, Exception):
+            pass
         try:
             await think_msg.delete()
         except Exception:
@@ -148,5 +167,6 @@ async def chat(message: Message, bot: Bot):
         text=answer,
     )
     await add_message(chat_id, assistant_msg)
+    bot_messages_total.labels(status="success").inc()
     logger.debug(f"user_id={user_id}, chat_id={chat_id}: ответ ассистента сохранён в Redis")
     logger.info(f"user_id={user_id}, chat_id={chat_id}: ответ отправлен")

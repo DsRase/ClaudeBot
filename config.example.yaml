@@ -1,7 +1,7 @@
 access_user_ids: []
 admin_user_ids: []
 
-default_model: claude-opus-4.7
+default_model: claude-sonnet-4.6
 
 available_models:
   - claude-opus-4.7
@@ -12,6 +12,7 @@ available_models:
   - gpt-5.4
   - gpt-5.2
   - gemini-3.1-pro-preview
+  - adaptive
 max_tokens: 8192
 
 sqlite_path: data/bot.db

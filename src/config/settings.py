@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     admin_user_ids: list[int] = []
 
     # LLM
-    default_model: str = "claude-opus-4.6"
-    available_models: list[str] = ["claude-opus-4.6"]
+    default_model: str = "claude-opus-4.7"
+    available_models: list[str] = ["claude-opus-4.7"]
+    adaptive_selector_model: str = "claude-opus-4.7"
     max_tokens: int = 1024
 
     # Хранилище
@@ -43,6 +44,9 @@ class Settings(BaseSettings):
     fetch_max_content_chars: int = 10_000
     fetch_request_timeout: int = 15
     fetch_user_agent: str = "Mozilla/5.0 (compatible; PipindrBot/1.0)"
+
+    # Метрики
+    metrics_port: int = 9000
 
     model_config = SettingsConfigDict(
         env_file=".env",
