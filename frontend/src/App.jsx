@@ -152,7 +152,7 @@ function App() {
         <div className='header-info'>
           <h1>ClaudeBot</h1>
           <div className='model-selector'>
-            <button className='model-btn' onClick={() => setShowModels(!showModels)}>
+            <button className='model-btn' onClick={() => setShowModels(!showModels)} disabled={loading}>
               {selectedModel ? getShortName(selectedModel) : 'Выбрать модель'} ▼
             </button>
             {showModels && (

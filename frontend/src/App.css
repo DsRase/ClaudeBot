@@ -267,6 +267,15 @@ body {
   transition: 0.2s;
 }
 
+.model-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .model-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
